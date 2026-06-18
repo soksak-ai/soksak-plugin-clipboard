@@ -1,13 +1,13 @@
 {
   "spec": "soksak-spec-plugin@0.0.1",
-  "id": "soksak-plugin-clipboard",
+  "id": "soksak-plugin-clip",
   "name": {
-    "ko": "클립보드",
-    "en": "Clipboard"
+    "ko": "클립",
+    "en": "Clip"
   },
   "version": "0.0.1",
-  "repo": "https://github.com/soksak-ai/soksak-plugin-clipboard.git",
-  "description": "클립보드 복사 이력을 자동으로 모아 검색·즐겨찾기·휴지통으로 관리한다. 같은 내용은 합쳐 복사 횟수를 센다. 우측 사이드바 탭.",
+  "repo": "https://github.com/soksak-ai/soksak-plugin-clip.git",
+  "description": "클립보드 복사 이력과 영구 메모를 카테고리로 묶어 관리한다. 클립은 즐겨찾기·메모가 아니면 설정한 보존일(기본 3일) 후 자동 삭제, 메모는 영구. 같은 내용은 합쳐 복사 횟수를 센다. 우측 사이드바 탭.",
   "entry": "main.js",
   "permissions": [
     "data",
@@ -15,13 +15,30 @@
     "ui",
     "commands"
   ],
+  "configuration": [
+    {
+      "key": "retentionDays",
+      "type": "number",
+      "default": 3,
+      "min": 1,
+      "max": 30,
+      "title": {
+        "ko": "보존 일수",
+        "en": "Retention days"
+      },
+      "description": {
+        "ko": "즐겨찾기·메모가 아닌 클립을 며칠간 보관할지(1~30, 기본 3). 지난 클립은 자동 삭제.",
+        "en": "How many days to keep non-favorite, non-memo clips (1–30, default 3). Older clips are auto-deleted."
+      }
+    }
+  ],
   "contributes": {
     "views": [
       {
         "id": "clips",
         "title": {
-          "ko": "클립보드",
-          "en": "Clipboard"
+          "ko": "클립",
+          "en": "Clip"
         },
         "icon": "📋",
         "placements": [
@@ -31,46 +48,94 @@
     ],
     "commands": [
       {
-        "name": "clipboard.capture",
+        "name": "clip.capture",
         "title": "클립 캡처"
       },
       {
-        "name": "clipboard.list",
-        "title": "클립 목록"
+        "name": "clip.list",
+        "title": "클립/메모 목록"
       },
       {
-        "name": "clipboard.search",
-        "title": "클립 검색"
+        "name": "clip.search",
+        "title": "검색"
       },
       {
-        "name": "clipboard.favorite",
+        "name": "clip.favorite",
         "title": "즐겨찾기 토글"
       },
       {
-        "name": "clipboard.delete",
-        "title": "클립 삭제"
+        "name": "clip.category",
+        "title": "항목 카테고리 이동"
       },
       {
-        "name": "clipboard.restore",
-        "title": "클립 복원"
+        "name": "clip.delete",
+        "title": "삭제(휴지통)"
       },
       {
-        "name": "clipboard.clear",
-        "title": "클립 비우기"
+        "name": "clip.restore",
+        "title": "복원"
       },
       {
-        "name": "clipboard.count",
-        "title": "클립 개수"
+        "name": "clip.clear",
+        "title": "비우기"
       },
       {
-        "name": "clipboard.state",
+        "name": "clip.count",
+        "title": "개수"
+      },
+      {
+        "name": "clip.state",
         "title": "상태 요약"
+      },
+      {
+        "name": "clip.purge",
+        "title": "보존 지난 클립 정리"
+      },
+      {
+        "name": "memo.add",
+        "title": "메모 추가"
+      },
+      {
+        "name": "memo.update",
+        "title": "메모 수정"
+      },
+      {
+        "name": "memo.delete",
+        "title": "메모 삭제(휴지통)"
+      },
+      {
+        "name": "category.add",
+        "title": "카테고리 추가"
+      },
+      {
+        "name": "category.rename",
+        "title": "카테고리 이름변경"
+      },
+      {
+        "name": "category.delete",
+        "title": "카테고리 삭제"
+      },
+      {
+        "name": "category.list",
+        "title": "카테고리 목록"
       }
     ],
     "nodes": [
       {
         "id": "search-input",
         "description": "검색 입력 필드"
+      },
+      {
+        "id": "category-select",
+        "description": "카테고리 필터 선택"
+      },
+      {
+        "id": "kind-clip",
+        "description": "클립 종류 필터 토글"
+      },
+      {
+        "id": "kind-memo",
+        "description": "메모 종류 필터 토글"
       },
       {
         "id": "fav-filter",
@@ -81,16 +146,24 @@
         "description": "휴지통 보기 토글"
       },
       {
-        "id": "clip-item",
-        "description": "클립 행"
+        "id": "memo-add",
+        "description": "메모 추가 버튼"
       },
       {
-        "id": "clip-fav",
+        "id": "memo-input",
+        "description": "메모 작성 입력"
+      },
+      {
+        "id": "item",
+        "description": "클립/메모 행"
+      },
+      {
+        "id": "item-fav",
         "description": "별(즐겨찾기) 토글 버튼"
       },
       {
-        "id": "clip-del",
-        "description": "클립 삭제 버튼"
+        "id": "item-del",
+        "description": "삭제 버튼"
       }
     ]
   }
