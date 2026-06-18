@@ -1,0 +1,39 @@
+{
+  "spec": "soksak-plugin-spec@1",
+  "id": "soksak-plugin-clipboard",
+  "name": { "ko": "클립보드", "en": "Clipboard" },
+  "version": "0.1.0",
+  "repo": "https://github.com/soksak-ai/soksak-plugin-clipboard.git",
+  "description": "클립보드 복사 이력을 자동으로 모아 검색·즐겨찾기·휴지통으로 관리한다. 같은 내용은 합쳐 복사 횟수를 센다. 우측 사이드바 탭.",
+  "entry": "main.js",
+  "permissions": ["data", "clipboard:read", "ui", "commands"],
+  "contributes": {
+    "views": [
+      {
+        "id": "clips",
+        "title": { "ko": "클립보드", "en": "Clipboard" },
+        "icon": "📋",
+        "placements": ["sidebar-right"]
+      }
+    ],
+    "commands": [
+      { "name": "clipboard.capture", "title": "클립 캡처" },
+      { "name": "clipboard.list", "title": "클립 목록" },
+      { "name": "clipboard.search", "title": "클립 검색" },
+      { "name": "clipboard.favorite", "title": "즐겨찾기 토글" },
+      { "name": "clipboard.delete", "title": "클립 삭제" },
+      { "name": "clipboard.restore", "title": "클립 복원" },
+      { "name": "clipboard.clear", "title": "클립 비우기" },
+      { "name": "clipboard.count", "title": "클립 개수" },
+      { "name": "clipboard.state", "title": "상태 요약" }
+    ],
+    "nodes": [
+      { "id": "search-input", "description": "검색 입력 필드" },
+      { "id": "fav-filter", "description": "즐겨찾기만 보기 토글" },
+      { "id": "trash-filter", "description": "휴지통 보기 토글" },
+      { "id": "clip-item", "description": "클립 행" },
+      { "id": "clip-fav", "description": "별(즐겨찾기) 토글 버튼" },
+      { "id": "clip-del", "description": "클립 삭제 버튼" }
+    ]
+  }
+}
