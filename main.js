@@ -1,254 +1,414 @@
-// 클립보드 히스토리 플러그인 — 시스템 클립보드 복사 이력을 자동으로 모은다.
+// 클립(Clip) 플러그인 — 내부에 두 종류: 클립보드(자동 캡처 이력) + 메모(사용자 작성, 영구).
 // 데이터는 코어 app.data(SQLite, CJK 전문검색), 실시간은 app.data.watch(크로스윈도우, 폴링 0).
-// 자동 캡처는 app.clipboard.watch(코어가 OS별 변경 이벤트를 단일 신호로 흡수 — 플러그인은 OS 분기를 안 봄).
+// 자동 캡처는 app.clipboard.watch(코어가 OS별 변경 이벤트를 단일 신호로 흡수).
 //
-// [스코프] = 전역(프로젝트 무관). 클립보드는 OS 단일 자원이라 프로젝트별로 가르지 않는다 → scope 생략.
-//
-// [v1 범위] 자동 캡처 · dedup(같은 내용 합쳐 copyCount 증가) · CJK 검색 · 즐겨찾기 ·
-//   휴지통(소프트 삭제 deletedAt · 복원) · 전체 삭제 · 1줄 미리보기.
-// [후속(이번 제외)]
-//   - Apple 메모 내보내기: macOS osascript 의존(플랫폼 종속) → R5 위반이라 코어 capability 선행 필요.
-//   - 클립 → runbook 명령 등록: runbook 플러그인 + 교차 플러그인 연동 필요.
-//   - 풀 캘린더 날짜 필터 그리드: v1 은 행 메타(복사 시각)로 충분 → 후속에서 그리드.
+// [항목 종류] 단일 컬렉션 items + kind:
+//   - clip(클립보드): 자동 캡처(dedup·copyCount). 보존 = 즐겨찾기 아니면 retentionDays(기본 3·최대 30) 후 자동 삭제.
+//   - memo(메모): 사용자 작성. 영구(보존 삭제 대상 아님).
+// [카테고리] 모든 항목에 category(기본 "기본"). cats 컬렉션으로 add/rename/delete.
+// [스코프] 전역(클립보드는 OS 단일 자원). [삭제] 소프트 삭제 boolean `deleted`(deletedAt 는 표시 메타).
 
-const COLL = "clips";
+const COLL = "items";
+const CATS = "cats";
+const DEFAULT_CAT = "기본";
+const DAY_MS = 86_400_000;
 
 export default {
   activate(ctx) {
     const app = ctx.app;
     const sub = (d) => ctx.subscriptions.push(d);
-
-    const mounts = new Set(); // 마운트된 뷰 — data 변경 시 전 창 refresh 라우팅
+    const mounts = new Set();
     const err = (code, message) => ({ ok: false, code, message });
+    const reg = (name, spec) => sub(app.commands.register(name, spec));
 
-    // [삭제 상태 모델] 소프트 삭제는 boolean `deleted`(false/true)로 표현하고, `deletedAt`(ms|null)는
-    // 표시·정렬용 메타로만 둔다. SQL 에서 `json_extract = NULL` 은 항상 거짓이라 null 필드로는
-    // where 필터가 안 된다(band-aid 금지 — 구조로 해결). boolean 은 0/1 로 추출돼 정상 비교된다.
+    // 설정 보존일(1~30, 기본 3). app.settings 없으면 기본.
+    const retentionDays = () => {
+      const v = app.settings && app.settings.get ? app.settings.get("retentionDays") : undefined;
+      const n = typeof v === "number" ? v : 3;
+      return Math.min(30, Math.max(1, Math.round(n)));
+    };
 
-    // ── 단일 캡처 유틸(R8) — watch 자동 캡처와 clipboard.capture 명령이 공유. dedup 판정도 여기 한 곳.
-    // trim 후 빈 건 무시. 비삭제(deleted==false) 동일 content 가 있으면 그 레코드 copyCount++ 후
-    // put 갱신(최신화), 없으면 신규 put. 반환 = { clipId, deduped }.
+    // ── 카테고리 ──────────────────────────────────────────────────────────────
+    async function listCats() {
+      const rows = await app.data.query(CATS, { order: "order", limit: 1000 });
+      return rows.map((c) => String(c.name));
+    }
+    async function ensureDefaultCategory() {
+      const rows = await app.data.query(CATS, { where: { name: DEFAULT_CAT }, limit: 1 });
+      if (!rows.length) await app.data.put(CATS, { name: DEFAULT_CAT, order: 0 });
+    }
+    async function catExists(name) {
+      const rows = await app.data.query(CATS, { where: { name }, limit: 1 });
+      return rows.length > 0;
+    }
+
+    // ── 단일 캡처 유틸(R8) — watch 자동 캡처와 clip.capture 가 공유. clip 종류·기본 카테고리.
     async function captureText(raw) {
       const content = typeof raw === "string" ? raw.trim() : "";
       if (!content) return null;
-      // 동일 비삭제 클립 탐색 — content 는 fts 필드(인덱스 아님)라 where eq 불가 →
-      // search 로 후보를 좁힌 뒤 JS 에서 정확 일치(===)·비삭제만 채택(검색은 부분일치라 == 로 확정).
       const candidates = await app.data.search(COLL, content, { limit: 50 });
-      const existing = candidates.find((c) => c.content === content && !c.deleted);
+      const existing = candidates.find(
+        (c) => c.content === content && c.kind === "clip" && !c.deleted,
+      );
       if (existing) {
+        // 재복사 = 나이 갱신(at). 활성 클립은 보존, 방치만 purge.
         await app.data.put(
           COLL,
-          { ...existing, copyCount: (existing.copyCount || 1) + 1 },
+          { ...existing, copyCount: (existing.copyCount || 1) + 1, at: Date.now() },
           { id: existing.id },
         );
-        return { clipId: existing.id, deduped: true };
+        return { itemId: existing.id, deduped: true };
       }
       const id = await app.data.put(COLL, {
+        kind: "clip",
         content,
+        category: DEFAULT_CAT,
         copyCount: 1,
         favorite: false,
         deleted: false,
         deletedAt: null,
+        at: Date.now(),
       });
-      return { clipId: id, deduped: false };
+      // 신규 캡처 시점에 보존 지난 클립 정리(상시 작은 비용 — 윈도우 작음).
+      void purgeOld().catch(() => {});
+      return { itemId: id, deduped: false };
     }
 
-    // ── 자동 캡처: 코어 clipboard-change 구독(폴링 macOS 한정, 코어가 흡수). self-write echo 는
-    // 코어가 1회 억제하므로 사용자 복사만 들어온다.
+    // ── 보존 정리 — clip(클립보드)이고 즐겨찾기 아니면 retentionDays 지난 것 하드 삭제. memo·즐겨찾기는 영구.
+    //    나이 기준 = updated(마지막 복사). 재복사하면 갱신돼 활성 클립은 남고, 방치된 것만 사라진다.
+    async function purgeOld() {
+      const cutoff = Date.now() - retentionDays() * DAY_MS;
+      const clips = await app.data.query(COLL, { where: { kind: "clip" }, limit: 100000 });
+      const stale = clips.filter((c) => !c.favorite && typeof c.at === "number" && c.at < cutoff);
+      for (const c of stale) await app.data.delete(COLL, c.id);
+      return stale.length;
+    }
+
+    // ── 목록 질의(명령·뷰 공유) — kind/category/favorite/trash 필터, 최신순.
+    async function listItems({ kind, category, favorite, trash, limit, offset }) {
+      const where = { deleted: trash === true };
+      if (kind) where.kind = kind;
+      if (category) where.category = category;
+      if (favorite) where.favorite = true;
+      return app.data.query(COLL, { where, order: "at", desc: true, limit: limit ?? 300, offset });
+    }
+
+    // ── 자동 캡처 ──
     sub(app.clipboard.watch((e) => void captureText(e.text)));
 
-    // ── 커맨드(전 기능 노출 — UI 없이 E2E 전부 가능, R7) ──
+    // ── 명령: clip.* (클립보드) ──────────────────────────────────────────────
+    reg("clip.capture", {
+      description: "텍스트를 클립보드 항목으로 캡처(자동 캡처와 동일 경로 — 같은 내용은 copyCount 증가, 기본 카테고리).",
+      params: { text: { type: "string", required: true } },
+      returns: "{ itemId, deduped }",
+      examples: ['sok plugin.soksak-plugin-clip.clip.capture \'{"text":"테스트"}\''],
+      handler: async (p) => {
+        if (typeof p.text !== "string") return err("INVALID_PARAMS", "text 필요");
+        const r = await captureText(p.text);
+        if (!r) return err("INVALID_PARAMS", "빈 텍스트는 캡처하지 않음");
+        return { ok: true, ...r };
+      },
+    });
 
-    sub(
-      app.commands.register("clipboard.capture", {
-        description:
-          "텍스트를 클립 이력에 캡처(자동 캡처와 동일 경로 — 같은 내용은 copyCount 증가). 헤드리스 검증·수동 추가용",
-        params: { text: { type: "string", required: true, description: "캡처할 텍스트" } },
-        returns: "{ clipId, deduped }",
-        examples: ['sok plugin.soksak-plugin-clipboard.clipboard.capture \'{"text":"테스트"}\''],
-        handler: async (p) => {
-          if (typeof p.text !== "string") return err("INVALID_PARAMS", "text 필요");
-          const r = await captureText(p.text);
-          if (!r) return err("INVALID_PARAMS", "빈 텍스트는 캡처하지 않음");
-          return { ok: true, ...r };
-        },
-      }),
-    );
+    reg("clip.list", {
+      description: "항목 목록(최신순). kind(clip|memo)·category·favorite·trash 필터.",
+      params: {
+        kind: { type: "string", description: "clip | memo" },
+        category: { type: "string" },
+        favorite: { type: "boolean" },
+        trash: { type: "boolean" },
+        limit: { type: "number" },
+        offset: { type: "number" },
+      },
+      returns: "{ items }",
+      examples: ["sok plugin.soksak-plugin-clip.clip.list"],
+      handler: async (p) => {
+        const items = await listItems({
+          kind: p.kind === "clip" || p.kind === "memo" ? p.kind : undefined,
+          category: typeof p.category === "string" ? p.category : undefined,
+          favorite: p.favorite === true,
+          trash: p.trash === true,
+          limit: typeof p.limit === "number" ? p.limit : 300,
+          offset: typeof p.offset === "number" ? p.offset : undefined,
+        });
+        return { ok: true, items };
+      },
+    });
 
-    sub(
-      app.commands.register("clipboard.list", {
-        description:
-          "클립 목록(최신순). favorite=true 면 즐겨찾기만, trash=true 면 휴지통(삭제됨)만",
-        params: {
-          limit: { type: "number", description: "최대 건수(기본 200)" },
-          offset: { type: "number", description: "페이지네이션" },
-          favorite: { type: "boolean", description: "즐겨찾기만" },
-          trash: { type: "boolean", description: "휴지통(삭제됨)만" },
-        },
-        returns: "{ clips }",
-        examples: ["sok plugin.soksak-plugin-clipboard.clipboard.list"],
-        handler: async (p) => {
-          const clips = await listClips({
-            favorite: p.favorite === true,
-            trash: p.trash === true,
-            limit: typeof p.limit === "number" ? p.limit : 200,
-            offset: typeof p.offset === "number" ? p.offset : undefined,
-          });
-          return { ok: true, clips };
-        },
-      }),
-    );
+    reg("clip.search", {
+      description: "내용 CJK 전문검색(휴지통 제외). kind 로 clip/memo 한정 가능.",
+      params: { query: { type: "string", required: true }, kind: { type: "string" }, limit: { type: "number" } },
+      returns: "{ items }",
+      handler: async (p) => {
+        if (typeof p.query !== "string") return err("INVALID_PARAMS", "query 필요");
+        const hits = await app.data.search(COLL, p.query, { limit: typeof p.limit === "number" ? p.limit : 100 });
+        const kind = p.kind === "clip" || p.kind === "memo" ? p.kind : undefined;
+        const items = hits.filter((c) => !c.deleted && (!kind || c.kind === kind));
+        return { ok: true, items };
+      },
+    });
 
-    sub(
-      app.commands.register("clipboard.search", {
-        description: "클립 CJK 전문검색(내용). 휴지통 제외.",
-        params: {
-          query: { type: "string", required: true, description: "검색어" },
-          limit: { type: "number", description: "최대 건수(기본 100)" },
-        },
-        returns: "{ clips }",
-        examples: ['sok plugin.soksak-plugin-clipboard.clipboard.search \'{"query":"테스트"}\''],
-        handler: async (p) => {
-          if (typeof p.query !== "string") return err("INVALID_PARAMS", "query 필요");
-          const hits = await app.data.search(COLL, p.query, {
-            limit: typeof p.limit === "number" ? p.limit : 100,
-          });
-          // 검색은 휴지통 포함이므로 비삭제만 남긴다(목록 계약과 일관).
-          const clips = hits.filter((c) => !c.deleted);
-          return { ok: true, clips };
-        },
-      }),
-    );
+    reg("clip.favorite", {
+      description: "즐겨찾기 토글(클립이면 보존 예외가 된다).",
+      params: { id: { type: "string", required: true } },
+      returns: "{ itemId, favorite }",
+      handler: async (p) => {
+        if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
+        const rec = await app.data.get(COLL, p.id);
+        if (!rec) return err("TARGET_NOT_FOUND", "항목 없음");
+        const favorite = !rec.favorite;
+        await app.data.put(COLL, { ...rec, favorite }, { id: p.id });
+        return { ok: true, itemId: p.id, favorite };
+      },
+    });
 
-    sub(
-      app.commands.register("clipboard.favorite", {
-        description: "즐겨찾기 토글(있으면 해제, 없으면 설정)",
-        params: { id: { type: "string", required: true, description: "클립 id" } },
-        returns: "{ clipId, favorite }",
-        handler: async (p) => {
-          if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
-          const rec = await app.data.get(COLL, p.id);
-          if (!rec) return err("TARGET_NOT_FOUND", "클립 없음");
-          const favorite = !rec.favorite;
-          await app.data.put(COLL, { ...rec, favorite }, { id: p.id });
-          return { ok: true, clipId: p.id, favorite };
-        },
-      }),
-    );
+    reg("clip.category", {
+      description: "항목의 카테고리 이동. 없는 카테고리면 거부.",
+      params: { id: { type: "string", required: true }, category: { type: "string", required: true } },
+      returns: "{ itemId, category }",
+      handler: async (p) => {
+        if (typeof p.id !== "string" || typeof p.category !== "string")
+          return err("INVALID_PARAMS", "id·category 필요");
+        if (!(await catExists(p.category))) return err("TARGET_NOT_FOUND", "없는 카테고리");
+        const rec = await app.data.get(COLL, p.id);
+        if (!rec) return err("TARGET_NOT_FOUND", "항목 없음");
+        await app.data.put(COLL, { ...rec, category: p.category }, { id: p.id });
+        return { ok: true, itemId: p.id, category: p.category };
+      },
+    });
 
-    sub(
-      app.commands.register("clipboard.delete", {
-        description: "클립 휴지통으로 보내기(소프트 삭제 — deletedAt 표시). 복원 가능.",
-        params: { id: { type: "string", required: true, description: "클립 id" } },
-        returns: "{ clipId }",
-        handler: async (p) => {
-          if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
-          const rec = await app.data.get(COLL, p.id);
-          if (!rec) return err("TARGET_NOT_FOUND", "클립 없음");
-          await app.data.put(COLL, { ...rec, deleted: true, deletedAt: Date.now() }, { id: p.id });
-          return { ok: true, clipId: p.id };
-        },
-      }),
-    );
+    reg("clip.delete", {
+      description: "항목 휴지통으로(소프트 삭제). 복원 가능.",
+      params: { id: { type: "string", required: true } },
+      returns: "{ itemId }",
+      handler: async (p) => {
+        if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
+        const rec = await app.data.get(COLL, p.id);
+        if (!rec) return err("TARGET_NOT_FOUND", "항목 없음");
+        await app.data.put(COLL, { ...rec, deleted: true, deletedAt: Date.now() }, { id: p.id });
+        return { ok: true, itemId: p.id };
+      },
+    });
 
-    sub(
-      app.commands.register("clipboard.restore", {
-        description: "휴지통의 클립 복원(deletedAt 해제)",
-        params: { id: { type: "string", required: true, description: "클립 id" } },
-        returns: "{ clipId }",
-        handler: async (p) => {
-          if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
-          const rec = await app.data.get(COLL, p.id);
-          if (!rec) return err("TARGET_NOT_FOUND", "클립 없음");
-          await app.data.put(COLL, { ...rec, deleted: false, deletedAt: null }, { id: p.id });
-          return { ok: true, clipId: p.id };
-        },
-      }),
-    );
+    reg("clip.restore", {
+      description: "휴지통 항목 복원.",
+      params: { id: { type: "string", required: true } },
+      returns: "{ itemId }",
+      handler: async (p) => {
+        if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
+        const rec = await app.data.get(COLL, p.id);
+        if (!rec) return err("TARGET_NOT_FOUND", "항목 없음");
+        await app.data.put(COLL, { ...rec, deleted: false, deletedAt: null }, { id: p.id });
+        return { ok: true, itemId: p.id };
+      },
+    });
 
-    sub(
-      app.commands.register("clipboard.clear", {
-        description: "클립 전체 삭제(하드). trashOnly=true 면 휴지통만 비운다.",
-        params: { trashOnly: { type: "boolean", description: "휴지통만 비우기" } },
-        returns: "{ deleted }",
-        handler: async (p) => {
-          const all = await app.data.query(COLL, { limit: 100000 });
-          const targets = p.trashOnly === true ? all.filter((c) => c.deleted) : all;
-          for (const c of targets) await app.data.delete(COLL, c.id);
-          return { ok: true, deleted: targets.length };
-        },
-      }),
-    );
+    reg("clip.clear", {
+      description: "전체 하드 삭제. trashOnly=true 면 휴지통만, kind 로 clip/memo 한정.",
+      params: { trashOnly: { type: "boolean" }, kind: { type: "string" } },
+      returns: "{ deleted }",
+      handler: async (p) => {
+        const all = await app.data.query(COLL, { limit: 100000 });
+        const kind = p.kind === "clip" || p.kind === "memo" ? p.kind : undefined;
+        let targets = p.trashOnly === true ? all.filter((c) => c.deleted) : all;
+        if (kind) targets = targets.filter((c) => c.kind === kind);
+        for (const c of targets) await app.data.delete(COLL, c.id);
+        return { ok: true, deleted: targets.length };
+      },
+    });
 
-    sub(
-      app.commands.register("clipboard.count", {
-        description: "클립 개수. trash=true 면 휴지통 개수, 아니면 비휴지통 개수.",
-        params: { trash: { type: "boolean", description: "휴지통 개수" } },
-        returns: "{ count }",
-        handler: async (p) => {
-          const count = await app.data.count(COLL, { where: { deleted: p.trash === true } });
-          return { ok: true, count };
-        },
-      }),
-    );
+    reg("clip.count", {
+      description: "개수. trash=true 면 휴지통, kind 로 한정.",
+      params: { trash: { type: "boolean" }, kind: { type: "string" } },
+      returns: "{ count }",
+      handler: async (p) => {
+        const where = { deleted: p.trash === true };
+        if (p.kind === "clip" || p.kind === "memo") where.kind = p.kind;
+        const count = await app.data.count(COLL, { where });
+        return { ok: true, count };
+      },
+    });
 
-    sub(
-      app.commands.register("clipboard.state", {
-        description: "상태 요약(introspection) — 활성/즐겨찾기/휴지통 개수.",
-        params: {},
-        returns: "{ active, favorites, trash }",
-        handler: async () => {
-          const active = await app.data.count(COLL, { where: { deleted: false } });
-          const favorites = await app.data.count(COLL, {
-            where: { deleted: false, favorite: true },
-          });
-          const trash = await app.data.count(COLL, { where: { deleted: true } });
-          return { ok: true, active, favorites, trash };
-        },
-      }),
-    );
+    reg("clip.state", {
+      description: "상태 요약 — 클립보드/메모/즐겨찾기/휴지통 개수 + 보존일.",
+      params: {},
+      returns: "{ clips, memos, favorites, trash, retentionDays }",
+      handler: async () => {
+        const clips = await app.data.count(COLL, { where: { deleted: false, kind: "clip" } });
+        const memos = await app.data.count(COLL, { where: { deleted: false, kind: "memo" } });
+        const favorites = await app.data.count(COLL, { where: { deleted: false, favorite: true } });
+        const trash = await app.data.count(COLL, { where: { deleted: true } });
+        return { ok: true, clips, memos, favorites, trash, retentionDays: retentionDays() };
+      },
+    });
 
-    // ── 목록 질의 유틸(명령·뷰 공유) — 휴지통/즐겨찾기 필터. copyCount 정렬은 별도 명령 인자 없이
-    // 최신(updated) 우선(가장 최근 복사가 위로). 휴지통은 deletedAt 최신순.
-    async function listClips({ favorite, trash, limit, offset }) {
-      const where = trash
-        ? { deleted: true }
-        : favorite
-          ? { deleted: false, favorite: true }
-          : { deleted: false };
-      return app.data.query(COLL, {
-        where,
-        order: "updated",
-        desc: true,
-        limit: limit ?? 200,
-        offset,
-      });
-    }
+    reg("clip.purge", {
+      description: "보존일 지난 클립보드 항목 즉시 정리(즐겨찾기·메모 제외). olderThanMs 주면 그 나이 기준(검증용).",
+      params: { olderThanMs: { type: "number", description: "이 ms 보다 오래된 클립(생략 시 설정 보존일)" } },
+      returns: "{ purged }",
+      handler: async (p) => {
+        if (typeof p.olderThanMs === "number") {
+          const cutoff = Date.now() - p.olderThanMs;
+          const clips = await app.data.query(COLL, { where: { kind: "clip" }, limit: 100000 });
+          const stale = clips.filter((c) => !c.favorite && typeof c.at === "number" && c.at <= cutoff);
+          for (const c of stale) await app.data.delete(COLL, c.id);
+          return { ok: true, purged: stale.length };
+        }
+        return { ok: true, purged: await purgeOld() };
+      },
+    });
 
-    // ── 뷰(우측 사이드바). 실시간 = app.data.watch(크로스윈도우, 폴링 0). ──
+    // ── 명령: memo.* (영구) ──────────────────────────────────────────────────
+    reg("memo.add", {
+      description: "메모 추가(사용자 작성, 영구 — 보존 삭제 대상 아님). category 생략 시 기본.",
+      params: { content: { type: "string", required: true }, category: { type: "string" } },
+      returns: "{ itemId }",
+      examples: ['sok plugin.soksak-plugin-clip.memo.add \'{"content":"기억할 것","category":"기본"}\''],
+      handler: async (p) => {
+        const content = typeof p.content === "string" ? p.content.trim() : "";
+        if (!content) return err("INVALID_PARAMS", "content 필요");
+        let category = typeof p.category === "string" && p.category ? p.category : DEFAULT_CAT;
+        if (!(await catExists(category))) category = DEFAULT_CAT;
+        const id = await app.data.put(COLL, {
+          kind: "memo",
+          content,
+          category,
+          copyCount: 0,
+          favorite: false,
+          deleted: false,
+          deletedAt: null,
+          at: Date.now(),
+        });
+        return { ok: true, itemId: id };
+      },
+    });
+
+    reg("memo.update", {
+      description: "메모 내용 수정(메모만).",
+      params: { id: { type: "string", required: true }, content: { type: "string", required: true } },
+      returns: "{ itemId }",
+      handler: async (p) => {
+        if (typeof p.id !== "string" || typeof p.content !== "string")
+          return err("INVALID_PARAMS", "id·content 필요");
+        const rec = await app.data.get(COLL, p.id);
+        if (!rec || rec.kind !== "memo") return err("TARGET_NOT_FOUND", "메모 없음");
+        await app.data.put(COLL, { ...rec, content: p.content.trim() }, { id: p.id });
+        return { ok: true, itemId: p.id };
+      },
+    });
+
+    reg("memo.delete", {
+      description: "메모 휴지통으로(소프트 삭제). clip.delete 와 동일하나 메모 한정.",
+      params: { id: { type: "string", required: true } },
+      returns: "{ itemId }",
+      handler: async (p) => {
+        if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
+        const rec = await app.data.get(COLL, p.id);
+        if (!rec || rec.kind !== "memo") return err("TARGET_NOT_FOUND", "메모 없음");
+        await app.data.put(COLL, { ...rec, deleted: true, deletedAt: Date.now() }, { id: p.id });
+        return { ok: true, itemId: p.id };
+      },
+    });
+
+    // ── 명령: category.* ──────────────────────────────────────────────────────
+    reg("category.list", {
+      description: "카테고리 목록(order 순). 항상 기본 포함.",
+      params: {},
+      returns: "{ categories }",
+      handler: async () => ({ ok: true, categories: await listCats() }),
+    });
+
+    reg("category.add", {
+      description: "카테고리 추가. 같은 이름 있으면 그대로(멱등).",
+      params: { name: { type: "string", required: true } },
+      returns: "{ name }",
+      handler: async (p) => {
+        const name = typeof p.name === "string" ? p.name.trim() : "";
+        if (!name) return err("INVALID_PARAMS", "name 필요");
+        if (await catExists(name)) return { ok: true, name };
+        const rows = await app.data.query(CATS, { order: "order", desc: true, limit: 1 });
+        const order = rows.length ? (rows[0].order || 0) + 1 : 1;
+        await app.data.put(CATS, { name, order });
+        return { ok: true, name };
+      },
+    });
+
+    reg("category.rename", {
+      description: "카테고리 이름변경 — 그 카테고리 항목들도 함께 옮긴다. 기본 카테고리는 변경 불가.",
+      params: { from: { type: "string", required: true }, to: { type: "string", required: true } },
+      returns: "{ moved }",
+      handler: async (p) => {
+        const from = typeof p.from === "string" ? p.from.trim() : "";
+        const to = typeof p.to === "string" ? p.to.trim() : "";
+        if (!from || !to) return err("INVALID_PARAMS", "from·to 필요");
+        if (from === DEFAULT_CAT) return err("INVALID_PARAMS", "기본 카테고리는 변경 불가");
+        const rows = await app.data.query(CATS, { where: { name: from }, limit: 1 });
+        if (!rows.length) return err("TARGET_NOT_FOUND", "카테고리 없음");
+        if (await catExists(to)) return err("INVALID_PARAMS", "이미 있는 이름");
+        await app.data.put(CATS, { ...rows[0], name: to }, { id: rows[0].id });
+        const items = await app.data.query(COLL, { where: { category: from }, limit: 100000 });
+        for (const it of items) await app.data.put(COLL, { ...it, category: to }, { id: it.id });
+        return { ok: true, moved: items.length };
+      },
+    });
+
+    reg("category.delete", {
+      description: "카테고리 삭제 — 그 항목들은 기본 카테고리로 이동(삭제 아님). 기본은 삭제 불가.",
+      params: { name: { type: "string", required: true } },
+      returns: "{ moved }",
+      handler: async (p) => {
+        const name = typeof p.name === "string" ? p.name.trim() : "";
+        if (!name) return err("INVALID_PARAMS", "name 필요");
+        if (name === DEFAULT_CAT) return err("INVALID_PARAMS", "기본 카테고리는 삭제 불가");
+        const rows = await app.data.query(CATS, { where: { name }, limit: 1 });
+        if (!rows.length) return err("TARGET_NOT_FOUND", "카테고리 없음");
+        const items = await app.data.query(COLL, { where: { category: name }, limit: 100000 });
+        for (const it of items) await app.data.put(COLL, { ...it, category: DEFAULT_CAT }, { id: it.id });
+        await app.data.delete(CATS, rows[0].id);
+        return { ok: true, moved: items.length };
+      },
+    });
+
+    // ── 뷰(우측 사이드바) ─────────────────────────────────────────────────────
     const CSS = [
-      ".skcb-root{display:flex;flex-direction:column;height:100%;font-size:12px;color:var(--fg);}",
-      ".skcb-head{display:flex;flex-direction:column;gap:6px;padding:6px 8px;border-bottom:1px solid var(--bd-soft);}",
-      ".skcb-search{width:100%;box-sizing:border-box;padding:4px 8px;border-radius:6px;border:1px solid var(--bd-soft);background:var(--bg);color:var(--fg);font-size:12px;}",
-      ".skcb-search::placeholder{color:var(--fg3);}",
-      ".skcb-filters{display:flex;gap:6px;}",
-      ".skcb-tg{flex:1;border:1px solid var(--bd-soft);background:var(--bg);color:var(--fg2);padding:3px 6px;border-radius:6px;cursor:pointer;font-size:11px;}",
-      ".skcb-tg:hover{color:var(--fg);border-color:var(--bd);}",
-      ".skcb-tg.on{background:var(--acc);border-color:var(--acc);color:var(--bg);}",
-      ".skcb-list{flex:1;overflow-y:auto;padding:4px;}",
-      ".skcb-empty{color:var(--fg2);padding:14px;text-align:center;}",
-      ".skcb-row{display:flex;gap:6px;align-items:flex-start;padding:6px;border-radius:6px;}",
-      ".skcb-row:hover{background:var(--bg);}",
-      ".skcb-main{flex:1;min-width:0;}",
-      ".skcb-prev{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}",
-      ".skcb-meta{font-size:10.5px;color:var(--fg3);margin-top:1px;}",
-      ".skcb-btn{flex:none;border:0;background:none;padding:2px 5px;border-radius:4px;color:var(--fg3);cursor:pointer;}",
-      ".skcb-btn:hover{color:var(--fg);background:var(--bd);}",
-      ".skcb-btn.fav.on{color:var(--acc);}",
+      ".skc-root{display:flex;flex-direction:column;height:100%;font-size:12px;color:var(--fg);}",
+      ".skc-head{display:flex;flex-direction:column;gap:8px;padding:10px 10px 9px;border-bottom:1px solid var(--bd-soft);}",
+      ".skc-row{display:flex;gap:7px;align-items:center;}",
+      ".skc-search{flex:1;box-sizing:border-box;min-height:32px;padding:6px 10px;border-radius:8px;border:1px solid var(--bd-soft);background:color-mix(in srgb,var(--fg) 6%,var(--bg));color:var(--fg);font-size:12px;transition:border-color .12s,box-shadow .12s;}",
+      ".skc-search::placeholder{color:var(--fg3);}",
+      ".skc-search:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 20%,transparent);}",
+      ".skc-select{box-sizing:border-box;min-height:30px;appearance:none;-webkit-appearance:none;padding:5px 26px 5px 9px;border-radius:7px;border:1px solid var(--bd-soft);background-color:color-mix(in srgb,var(--fg) 6%,var(--bg));color:var(--fg);font-size:12px;cursor:pointer;background-image:url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6'><path d='M1 1l4 4 4-4' fill='none' stroke='%23999' stroke-width='1.4' stroke-linecap='round'/></svg>\");background-repeat:no-repeat;background-position:right 9px center;}",
+      ".skc-select:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 20%,transparent);}",
+      ".skc-iconbtn{flex:none;display:flex;align-items:center;justify-content:center;width:32px;height:32px;border:1px solid var(--bd-soft);background:color-mix(in srgb,var(--fg) 6%,var(--bg));color:var(--fg2);border-radius:8px;cursor:pointer;font-size:15px;line-height:1;transition:all .12s;}",
+      ".skc-iconbtn:hover{color:var(--acc);border-color:color-mix(in srgb,var(--acc) 55%,var(--bd-soft));}",
+      ".skc-chips{display:flex;gap:6px;flex-wrap:wrap;}",
+      ".skc-chip{border:1px solid var(--bd-soft);background:color-mix(in srgb,var(--fg) 5%,var(--bg));color:var(--fg2);padding:3px 10px;border-radius:20px;cursor:pointer;font-size:11px;transition:all .1s;}",
+      ".skc-chip:hover{color:var(--fg);border-color:var(--bd);}",
+      ".skc-chip.on{background:var(--acc);border-color:var(--acc);color:var(--bg);}",
+      ".skc-memobox{display:flex;gap:6px;}",
+      ".skc-memoin{flex:1;box-sizing:border-box;min-height:30px;padding:5px 9px;border-radius:7px;border:1px solid var(--bd-soft);background:color-mix(in srgb,var(--fg) 6%,var(--bg));color:var(--fg);font-size:12px;}",
+      ".skc-memoin::placeholder{color:var(--fg3);}",
+      ".skc-memoin:focus{border-color:var(--acc);outline:none;box-shadow:0 0 0 3px color-mix(in srgb,var(--acc) 20%,transparent);}",
+      ".skc-list{flex:1;overflow-y:auto;padding:5px 6px;}",
+      ".skc-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:9px;color:var(--fg2);padding:44px 16px;text-align:center;}",
+      ".skc-empty svg{opacity:.4;}",
+      ".skc-empty-t{font-size:13px;}",
+      ".skc-empty-h{font-size:11px;color:var(--fg3);}",
+      ".skc-item{display:flex;gap:7px;align-items:flex-start;padding:7px 8px;border-radius:8px;transition:background .1s;}",
+      ".skc-item:hover{background:color-mix(in srgb,var(--fg) 6%,var(--bg));}",
+      ".skc-main{flex:1;min-width:0;}",
+      ".skc-prev{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}",
+      ".skc-meta{display:flex;gap:6px;align-items:center;font-size:10px;color:var(--fg3);margin-top:3px;white-space:nowrap;overflow:hidden;}",
+      ".skc-kind{flex:none;padding:1px 7px;border-radius:8px;border:1px solid;font-size:9px;line-height:1.5;white-space:nowrap;}",
+      ".skc-kind.memo{color:color-mix(in srgb,#c08cff 82%,var(--fg));border-color:color-mix(in srgb,#c08cff 42%,transparent);}",
+      ".skc-kind.clip{color:color-mix(in srgb,#52cfe6 82%,var(--fg));border-color:color-mix(in srgb,#52cfe6 42%,transparent);}",
+      ".skc-cat{flex:none;max-width:90px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--fg3);}",
+      ".skc-time{flex:none;color:var(--fg3);}",
+      ".skc-btn{flex:none;border:0;background:none;padding:2px 5px;border-radius:4px;color:var(--fg3);cursor:pointer;}",
+      ".skc-btn:hover{color:var(--fg);background:var(--bd);}",
+      ".skc-btn.fav.on{color:var(--acc);}",
     ].join("");
 
-    // node path 안정키 정제 — 세그먼트 형식(^[a-z0-9][a-z0-9.-]*$). 코어 자동 id 는 부합하나
-    // 임의 import id 도 결정적으로 매핑(인덱스 아님 — 멱등).
     const nodeKey = (id) => {
       const s = String(id).toLowerCase().replace(/[^a-z0-9.-]/g, "-");
       return /^[a-z0-9]/.test(s) ? s : "k-" + s;
@@ -261,117 +421,188 @@ export default {
           const style = document.createElement("style");
           style.textContent = CSS;
           const root = document.createElement("div");
-          root.className = "skcb-root";
-
+          root.className = "skc-root";
           const head = document.createElement("div");
-          head.className = "skcb-head";
+          head.className = "skc-head";
+
+          const row1 = document.createElement("div");
+          row1.className = "skc-row";
           const searchInput = document.createElement("input");
-          searchInput.className = "skcb-search";
+          searchInput.className = "skc-search";
           searchInput.type = "text";
           searchInput.placeholder = "검색…";
           searchInput.dataset.node = "search-input";
-          const filters = document.createElement("div");
-          filters.className = "skcb-filters";
-          const favTg = document.createElement("button");
-          favTg.className = "skcb-tg";
-          favTg.type = "button";
-          favTg.textContent = "★ 즐겨찾기";
-          favTg.dataset.node = "fav-filter";
-          const trashTg = document.createElement("button");
-          trashTg.className = "skcb-tg";
-          trashTg.type = "button";
-          trashTg.textContent = "🗑 휴지통";
-          trashTg.dataset.node = "trash-filter";
-          filters.append(favTg, trashTg);
-          head.append(searchInput, filters);
+          const addCatBtn = document.createElement("button");
+          addCatBtn.className = "skc-iconbtn";
+          addCatBtn.type = "button";
+          addCatBtn.textContent = "＋";
+          addCatBtn.title = "카테고리 추가";
+          row1.append(searchInput, addCatBtn);
+
+          const row2 = document.createElement("div");
+          row2.className = "skc-row";
+          const catSel = document.createElement("select");
+          catSel.className = "skc-select";
+          catSel.dataset.node = "category-select";
+          row2.append(catSel);
+
+          const chips = document.createElement("div");
+          chips.className = "skc-chips";
+          const mk = (label, node) => {
+            const b = document.createElement("button");
+            b.className = "skc-chip";
+            b.type = "button";
+            b.textContent = label;
+            b.dataset.node = node;
+            return b;
+          };
+          const clipChip = mk("클립보드", "kind-clip");
+          const memoChip = mk("메모", "kind-memo");
+          const favChip = mk("★", "fav-filter");
+          const trashChip = mk("🗑", "trash-filter");
+          chips.append(clipChip, memoChip, favChip, trashChip);
+
+          const memoBox = document.createElement("div");
+          memoBox.className = "skc-memobox";
+          const memoIn = document.createElement("input");
+          memoIn.className = "skc-memoin";
+          memoIn.type = "text";
+          memoIn.placeholder = "메모 추가… (Enter)";
+          memoIn.dataset.node = "memo-input";
+          const memoAdd = document.createElement("button");
+          memoAdd.className = "skc-iconbtn";
+          memoAdd.type = "button";
+          memoAdd.textContent = "✚";
+          memoAdd.title = "메모 추가";
+          memoAdd.dataset.node = "memo-add";
+          memoBox.append(memoIn, memoAdd);
+
+          head.append(row1, row2, chips, memoBox);
 
           const listEl = document.createElement("div");
-          listEl.className = "skcb-list";
+          listEl.className = "skc-list";
           root.append(head, listEl);
           container.append(style, root);
 
           let searchTerm = "";
+          let kindFilter = "";
           let favOnly = false;
           let trashView = false;
+          let category = "";
           let searchTimer = null;
 
+          // 상대 시간(짧게 — 좁은 사이드바). 방금/N분 전/N시간 전/N일 전, 그 이상은 M/D.
           const fmtTime = (ts) => {
+            if (typeof ts !== "number") return "";
+            const d = Date.now() - ts;
+            if (d < 60000) return "방금";
+            if (d < 3600000) return `${Math.floor(d / 60000)}분 전`;
+            if (d < 86400000) return `${Math.floor(d / 3600000)}시간 전`;
+            if (d < 604800000) return `${Math.floor(d / 86400000)}일 전`;
             try {
-              return new Date(ts).toLocaleString();
+              const x = new Date(ts);
+              return `${x.getMonth() + 1}/${x.getDate()}`;
             } catch {
               return "";
             }
           };
-          const preview = (text) => {
-            const line = String(text).split("\n").find((l) => l.trim()) || String(text);
+          const preview = (t) => {
+            const line = String(t).split("\n").find((l) => l.trim()) || String(t);
             return line.trim();
           };
 
-          const renderRows = (clips) => {
+          const fillCats = async () => {
+            const cats = await listCats();
+            catSel.textContent = "";
+            const optAll = document.createElement("option");
+            optAll.value = "";
+            optAll.textContent = "전체 카테고리";
+            catSel.append(optAll);
+            for (const name of cats) {
+              const o = document.createElement("option");
+              o.value = name;
+              o.textContent = name;
+              catSel.append(o);
+            }
+            catSel.value = category;
+          };
+
+          const renderRows = (items) => {
             listEl.textContent = "";
-            if (!clips.length) {
+            if (!items.length) {
               const empty = document.createElement("div");
-              empty.className = "skcb-empty";
-              empty.textContent = searchTerm
+              empty.className = "skc-empty";
+              const icon = document.createElement("span");
+              icon.innerHTML =
+                "<svg width='38' height='38' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><rect x='8' y='3' width='13' height='15' rx='2'/><path d='M3 7v13a2 2 0 0 0 2 2h11'/></svg>";
+              const t = document.createElement("div");
+              t.className = "skc-empty-t";
+              const h = document.createElement("div");
+              h.className = "skc-empty-h";
+              t.textContent = searchTerm
                 ? "검색 결과가 없습니다"
                 : trashView
                   ? "휴지통이 비었습니다"
-                  : favOnly
-                    ? "즐겨찾기가 없습니다"
-                    : "복사한 내용이 없습니다";
+                  : kindFilter === "memo"
+                    ? "메모가 없습니다"
+                    : "복사하거나 메모를 추가하세요";
+              h.textContent = trashView ? "" : "복사하면 자동으로 모이고, 아래에 메모를 적을 수 있습니다";
+              empty.append(icon, t, h);
               listEl.append(empty);
               return;
             }
-            for (const c of clips) {
+            for (const c of items) {
               const key = nodeKey(c.id);
               const row = document.createElement("div");
-              row.className = "skcb-row";
-              row.dataset.node = "clip-item/" + key;
-
+              row.className = "skc-item";
+              row.dataset.node = "item/" + key;
               const main = document.createElement("div");
-              main.className = "skcb-main";
+              main.className = "skc-main";
               const prev = document.createElement("div");
-              prev.className = "skcb-prev";
-              prev.textContent = preview(c.content); // 외부 데이터 = textContent만(XSS 안전)
+              prev.className = "skc-prev";
+              prev.textContent = preview(c.content);
               const meta = document.createElement("div");
-              meta.className = "skcb-meta";
-              const n = c.copyCount || 1;
-              meta.textContent = (n > 1 ? `×${n} · ` : "") + fmtTime(c.updated);
+              meta.className = "skc-meta";
+              const kind = document.createElement("span");
+              kind.className = "skc-kind " + (c.kind === "memo" ? "memo" : "clip");
+              kind.textContent = c.kind === "memo" ? "메모" : "클립보드";
+              const cat = document.createElement("span");
+              cat.className = "skc-cat";
+              cat.textContent = c.category || DEFAULT_CAT;
+              const time = document.createElement("span");
+              time.className = "skc-time";
+              const n = c.copyCount || 0;
+              time.textContent = (c.kind === "clip" && n > 1 ? `×${n} · ` : "") + fmtTime(c.at);
+              meta.append(kind, cat, time);
               main.append(prev, meta);
 
               const fav = document.createElement("button");
-              fav.className = "skcb-btn fav" + (c.favorite ? " on" : "");
+              fav.className = "skc-btn fav" + (c.favorite ? " on" : "");
               fav.type = "button";
               fav.textContent = c.favorite ? "★" : "☆";
               fav.title = "즐겨찾기";
-              fav.dataset.node = "clip-fav/" + key;
+              fav.dataset.node = "item-fav/" + key;
               fav.addEventListener("click", () => {
                 void app.data.put(COLL, { ...c, favorite: !c.favorite }, { id: c.id });
               });
 
               const del = document.createElement("button");
-              del.className = "skcb-btn";
+              del.className = "skc-btn";
               del.type = "button";
+              del.dataset.node = "item-del/" + key;
               if (trashView) {
                 del.textContent = "↩";
                 del.title = "복원";
-                del.dataset.node = "clip-del/" + key; // 휴지통에선 같은 슬롯이 복원
                 del.addEventListener("click", () => {
                   void app.data.put(COLL, { ...c, deleted: false, deletedAt: null }, { id: c.id });
                 });
               } else {
                 del.textContent = "✕";
                 del.title = "삭제";
-                del.dataset.node = "clip-del/" + key;
                 del.addEventListener("click", () => {
-                  void app.data.put(
-                    COLL,
-                    { ...c, deleted: true, deletedAt: Date.now() },
-                    { id: c.id },
-                  );
+                  void app.data.put(COLL, { ...c, deleted: true, deletedAt: Date.now() }, { id: c.id });
                 });
               }
-
               row.append(main, fav, del);
               listEl.append(row);
             }
@@ -379,20 +610,33 @@ export default {
 
           const refresh = async () => {
             try {
-              let clips;
+              await fillCats();
+              let items;
               if (searchTerm && !trashView) {
-                const hits = await app.data.search(COLL, searchTerm, { limit: 200 });
-                clips = hits.filter((c) => !c.deleted && (!favOnly || c.favorite));
+                const hits = await app.data.search(COLL, searchTerm, { limit: 300 });
+                items = hits.filter(
+                  (c) =>
+                    !c.deleted &&
+                    (!favOnly || c.favorite) &&
+                    (!kindFilter || c.kind === kindFilter) &&
+                    (!category || c.category === category),
+                );
               } else {
-                clips = await listClips({ favorite: favOnly, trash: trashView, limit: 300 });
+                items = await listItems({
+                  kind: kindFilter || undefined,
+                  category: category || undefined,
+                  favorite: favOnly,
+                  trash: trashView,
+                  limit: 300,
+                });
               }
-              renderRows(clips);
+              renderRows(items);
               if (vctx.setBadge) {
                 const active = await app.data.count(COLL, { where: { deleted: false } });
                 vctx.setBadge(active || null);
               }
             } catch (e) {
-              console.warn("[clipboard] refresh 실패:", e);
+              console.warn("[clip] refresh 실패:", e);
             }
           };
 
@@ -401,51 +645,96 @@ export default {
             if (searchTimer) clearTimeout(searchTimer);
             searchTimer = setTimeout(() => void refresh(), 180);
           });
-          favTg.addEventListener("click", () => {
-            favOnly = !favOnly;
-            favTg.classList.toggle("on", favOnly);
+          catSel.addEventListener("change", () => {
+            category = catSel.value;
             void refresh();
           });
-          trashTg.addEventListener("click", () => {
+          // clip/memo 칩 상호배타.
+          clipChip.addEventListener("click", () => {
+            kindFilter = kindFilter === "clip" ? "" : "clip";
+            clipChip.classList.toggle("on", kindFilter === "clip");
+            memoChip.classList.toggle("on", false);
+            void refresh();
+          });
+          memoChip.addEventListener("click", () => {
+            kindFilter = kindFilter === "memo" ? "" : "memo";
+            memoChip.classList.toggle("on", kindFilter === "memo");
+            clipChip.classList.toggle("on", false);
+            void refresh();
+          });
+          favChip.addEventListener("click", () => {
+            favOnly = !favOnly;
+            favChip.classList.toggle("on", favOnly);
+            void refresh();
+          });
+          trashChip.addEventListener("click", () => {
             trashView = !trashView;
-            trashTg.classList.toggle("on", trashView);
+            trashChip.classList.toggle("on", trashView);
+            void refresh();
+          });
+
+          const doAddMemo = async () => {
+            const text = memoIn.value.trim();
+            if (!text) return;
+            await app.data.put(COLL, {
+              kind: "memo",
+              content: text,
+              category: category || DEFAULT_CAT,
+              copyCount: 0,
+              favorite: false,
+              deleted: false,
+              deletedAt: null,
+              at: Date.now(),
+            });
+            memoIn.value = "";
+          };
+          memoAdd.addEventListener("click", () => void doAddMemo());
+          memoIn.addEventListener("keydown", (e) => {
+            if (e.key === "Enter") void doAddMemo();
+          });
+
+          addCatBtn.addEventListener("click", async () => {
+            const name = window.prompt("새 카테고리 이름");
+            if (!name || !name.trim()) return;
+            await app.commands.execute("plugin.soksak-plugin-clip.category.add", { name: name.trim() });
             void refresh();
           });
 
           const entry = { refresh };
           mounts.add(entry);
-          container.__skcbEntry = entry;
+          container.__skcEntry = entry;
           void refresh();
         },
         unmount(container) {
-          if (container.__skcbEntry) {
-            mounts.delete(container.__skcbEntry);
-            container.__skcbEntry = null;
+          if (container.__skcEntry) {
+            mounts.delete(container.__skcEntry);
+            container.__skcEntry = null;
           }
           container.textContent = "";
         },
       }),
     );
 
-    // 데이터 변경 → 전 창 뷰 재질의(같은 클립 이력 다중 창 일관, 폴링 0).
-    sub(
-      app.data.watch(COLL, undefined, () => {
-        for (const m of mounts) void m.refresh();
+    const onChange = () => {
+      for (const m of mounts) void m.refresh();
+    };
+    sub(app.data.watch(COLL, undefined, onChange));
+    sub(app.data.watch(CATS, undefined, onChange));
+
+    void Promise.all([
+      app.data.define(COLL, {
+        indexes: ["kind", "category", "favorite", "deleted", "copyCount", "at"],
+        fts: ["content"],
       }),
-    );
-
-    // 컬렉션 정의(멱등). content=FTS(CJK), favorite/deleted/copyCount=구조 질의.
-    // [주의] 소프트삭제 필터는 boolean `deleted` 를 인덱스로 둔다 — null `deletedAt` 은 SQL
-    // json_extract=NULL 이 항상 거짓이라 where 필터가 안 된다(deletedAt 은 표시용 메타).
-    void app.data
-      .define(COLL, { indexes: ["favorite", "deleted", "copyCount"], fts: ["content"] })
-      .then(() => {
-        for (const m of mounts) void m.refresh();
+      app.data.define(CATS, { indexes: ["order", "name"], fts: [] }),
+    ])
+      .then(async () => {
+        await ensureDefaultCategory();
+        await purgeOld().catch(() => {});
+        onChange();
       })
-      .catch((e) => console.error("[clipboard] 초기화 실패:", e));
+      .catch((e) => console.error("[clip] 초기화 실패:", e));
   },
 
-  deactivate() {
-    // 등록물·구독은 ctx.subscriptions/호스트 tracker 가 자동 수거.
-  },
+  deactivate() {},
 };
