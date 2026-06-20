@@ -98,7 +98,8 @@ export default {
 
     // ── 명령: clip.* (클립보드) ──────────────────────────────────────────────
     reg("clip.capture", {
-      description: "텍스트를 클립보드 항목으로 캡처(자동 캡처와 동일 경로 — 같은 내용은 copyCount 증가, 기본 카테고리).",
+      description: "Capture text as a clipboard item. Identical content increments copyCount instead of creating a duplicate; placed in the default category.",
+      triggers: { ko: "클립보드 캡처 텍스트 저장" },
       params: { text: { type: "string", required: true } },
       returns: "{ itemId, deduped }",
       examples: ['sok plugin.soksak-plugin-clip.clip.capture \'{"text":"테스트"}\''],
@@ -111,7 +112,8 @@ export default {
     });
 
     reg("clip.list", {
-      description: "항목 목록(최신순). kind(clip|memo)·category·favorite·trash 필터.",
+      description: "List items in newest-first order. Filter by kind (clip|memo), category, favorite, or trash.",
+      triggers: { ko: "클립보드 목록 항목 조회" },
       params: {
         kind: { type: "string", description: "clip | memo" },
         category: { type: "string" },
@@ -136,7 +138,8 @@ export default {
     });
 
     reg("clip.search", {
-      description: "내용 CJK 전문검색(휴지통 제외). kind 로 clip/memo 한정 가능.",
+      description: "Full-text CJK search across item content, excluding trash. Optionally narrow by kind (clip|memo).",
+      triggers: { ko: "클립보드 검색 복사내용 찾기 전문검색" },
       params: { query: { type: "string", required: true }, kind: { type: "string" }, limit: { type: "number" } },
       returns: "{ items }",
       handler: async (p) => {
@@ -149,7 +152,8 @@ export default {
     });
 
     reg("clip.favorite", {
-      description: "즐겨찾기 토글(클립이면 보존 예외가 된다).",
+      description: "Toggle favorite on an item. Favorited clipboard clips are exempt from retention-based deletion.",
+      triggers: { ko: "즐겨찾기 토글 보존 고정" },
       params: { id: { type: "string", required: true } },
       returns: "{ itemId, favorite }",
       handler: async (p) => {
@@ -163,7 +167,8 @@ export default {
     });
 
     reg("clip.category", {
-      description: "항목의 카테고리 이동. 없는 카테고리면 거부.",
+      description: "Move an item to a different category. Rejects the request if the target category does not exist.",
+      triggers: { ko: "카테고리 이동 분류 변경" },
       params: { id: { type: "string", required: true }, category: { type: "string", required: true } },
       returns: "{ itemId, category }",
       handler: async (p) => {
@@ -178,7 +183,8 @@ export default {
     });
 
     reg("clip.delete", {
-      description: "항목 휴지통으로(소프트 삭제). 복원 가능.",
+      description: "Soft-delete an item to the trash. Restorable via clip.restore.",
+      triggers: { ko: "삭제 휴지통 항목 제거" },
       params: { id: { type: "string", required: true } },
       returns: "{ itemId }",
       handler: async (p) => {
@@ -191,7 +197,8 @@ export default {
     });
 
     reg("clip.restore", {
-      description: "휴지통 항목 복원.",
+      description: "Restore a trashed item back to its original category.",
+      triggers: { ko: "복원 휴지통 되돌리기" },
       params: { id: { type: "string", required: true } },
       returns: "{ itemId }",
       handler: async (p) => {
@@ -204,7 +211,8 @@ export default {
     });
 
     reg("clip.clear", {
-      description: "전체 하드 삭제. trashOnly=true 면 휴지통만, kind 로 clip/memo 한정.",
+      description: "Hard-delete items permanently. trashOnly=true limits deletion to the trash; kind restricts to clip or memo.",
+      triggers: { ko: "전체 삭제 영구 지우기 비우기" },
       params: { trashOnly: { type: "boolean" }, kind: { type: "string" } },
       returns: "{ deleted }",
       handler: async (p) => {
@@ -218,7 +226,8 @@ export default {
     });
 
     reg("clip.count", {
-      description: "개수. trash=true 면 휴지통, kind 로 한정.",
+      description: "Count items. trash=true counts the trash; kind restricts to clip or memo.",
+      triggers: { ko: "개수 몇 개 카운트" },
       params: { trash: { type: "boolean" }, kind: { type: "string" } },
       returns: "{ count }",
       handler: async (p) => {
@@ -230,7 +239,8 @@ export default {
     });
 
     reg("clip.state", {
-      description: "상태 요약 — 클립보드/메모/즐겨찾기/휴지통 개수 + 보존일.",
+      description: "Summary of counts — clipboard items, memos, favorites, trash, and the configured retention period in days.",
+      triggers: { ko: "상태 요약 현황 통계" },
       params: {},
       returns: "{ clips, memos, favorites, trash, retentionDays }",
       handler: async () => {
@@ -243,7 +253,8 @@ export default {
     });
 
     reg("clip.purge", {
-      description: "보존일 지난 클립보드 항목 즉시 정리(즐겨찾기·메모 제외). olderThanMs 주면 그 나이 기준(검증용).",
+      description: "Immediately delete clipboard items that exceed the retention period, skipping favorites and memos. olderThanMs overrides the retention setting (useful for testing).",
+      triggers: { ko: "정리 만료 클립 제거 보존기간" },
       params: { olderThanMs: { type: "number", description: "이 ms 보다 오래된 클립(생략 시 설정 보존일)" } },
       returns: "{ purged }",
       handler: async (p) => {
@@ -260,7 +271,8 @@ export default {
 
     // ── 명령: memo.* (영구) ──────────────────────────────────────────────────
     reg("memo.add", {
-      description: "메모 추가(사용자 작성, 영구 — 보존 삭제 대상 아님). category 생략 시 기본.",
+      description: "Add a user-authored memo. Memos are permanent and never purged by the retention policy. Category defaults to the default category when omitted.",
+      triggers: { ko: "메모 추가 작성 기록" },
       params: { content: { type: "string", required: true }, category: { type: "string" } },
       returns: "{ itemId }",
       examples: ['sok plugin.soksak-plugin-clip.memo.add \'{"content":"기억할 것","category":"기본"}\''],
@@ -284,7 +296,8 @@ export default {
     });
 
     reg("memo.update", {
-      description: "메모 내용 수정(메모만).",
+      description: "Edit the content of an existing memo. Only applies to memo-kind items.",
+      triggers: { ko: "메모 수정 편집 내용 변경" },
       params: { id: { type: "string", required: true }, content: { type: "string", required: true } },
       returns: "{ itemId }",
       handler: async (p) => {
@@ -298,7 +311,8 @@ export default {
     });
 
     reg("memo.delete", {
-      description: "메모 휴지통으로(소프트 삭제). clip.delete 와 동일하나 메모 한정.",
+      description: "Soft-delete a memo to the trash. Same as clip.delete but restricted to memo-kind items.",
+      triggers: { ko: "메모 삭제 휴지통" },
       params: { id: { type: "string", required: true } },
       returns: "{ itemId }",
       handler: async (p) => {
@@ -312,14 +326,16 @@ export default {
 
     // ── 명령: category.* ──────────────────────────────────────────────────────
     reg("category.list", {
-      description: "카테고리 목록(order 순). 항상 기본 포함.",
+      description: "List all categories in display order. The default category is always included.",
+      triggers: { ko: "카테고리 목록 분류 조회" },
       params: {},
       returns: "{ categories }",
       handler: async () => ({ ok: true, categories: await listCats() }),
     });
 
     reg("category.add", {
-      description: "카테고리 추가. 같은 이름 있으면 그대로(멱등).",
+      description: "Add a new category. Idempotent — returns successfully if the name already exists.",
+      triggers: { ko: "카테고리 추가 새 분류 생성" },
       params: { name: { type: "string", required: true } },
       returns: "{ name }",
       handler: async (p) => {
@@ -334,7 +350,8 @@ export default {
     });
 
     reg("category.rename", {
-      description: "카테고리 이름변경 — 그 카테고리 항목들도 함께 옮긴다. 기본 카테고리는 변경 불가.",
+      description: "Rename a category and migrate all its items to the new name. The default category cannot be renamed.",
+      triggers: { ko: "카테고리 이름변경 분류 수정 이름바꾸기" },
       params: { from: { type: "string", required: true }, to: { type: "string", required: true } },
       returns: "{ moved }",
       handler: async (p) => {
@@ -353,7 +370,8 @@ export default {
     });
 
     reg("category.delete", {
-      description: "카테고리 삭제 — 그 항목들은 기본 카테고리로 이동(삭제 아님). 기본은 삭제 불가.",
+      description: "Delete a category and move its items to the default category. The default category itself cannot be deleted.",
+      triggers: { ko: "카테고리 삭제 분류 제거" },
       params: { name: { type: "string", required: true } },
       returns: "{ moved }",
       handler: async (p) => {
