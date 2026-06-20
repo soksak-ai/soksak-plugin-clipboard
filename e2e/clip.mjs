@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// soksak-plugin-clip E2E — 클립보드 캡처/dedup/검색/즐겨찾기 + 메모(영구) + 카테고리 + 보존 purge.
+// soksak-plugin-clipboard E2E — 클립보드 캡처/dedup/검색/즐겨찾기 + 메모(영구) + 카테고리 + 보존 purge.
 // 소켓(JSON-RPC)으로 실제 앱을 구동한다. 자동 캡처(watch)는 코어가 self-write echo 를 억제하므로
 // 헤드리스에선 clip.capture(같은 단일 유틸)로 검증한다. 멱등 — 시작·끝에 clear.
 //
@@ -13,7 +13,7 @@ import process from "node:process";
 import { fileURLToPath } from "node:url";
 
 const SOCKET = process.env.SOKSAK_SOCKET || path.join(os.homedir(), ".soksak", "com.soksak.dev.sock");
-const PLUGIN = "soksak-plugin-clip";
+const PLUGIN = "soksak-plugin-clipboard";
 const PLUGIN_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 let sock,

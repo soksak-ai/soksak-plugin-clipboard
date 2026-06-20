@@ -130,7 +130,7 @@ export default {
       triggers: { ko: "클립보드 캡처 텍스트 저장" },
       params: { text: { type: "string", required: true } },
       returns: "{ itemId, deduped }",
-      examples: ['sok plugin.soksak-plugin-clip.clip.capture \'{"text":"테스트"}\''],
+      examples: ['sok plugin.soksak-plugin-clipboard.clip.capture \'{"text":"테스트"}\''],
       handler: async (p) => {
         if (typeof p.text !== "string") return err("INVALID_PARAMS", "text 필요");
         const r = await captureText(p.text);
@@ -151,7 +151,7 @@ export default {
         offset: { type: "number" },
       },
       returns: "{ items }",
-      examples: ["sok plugin.soksak-plugin-clip.clip.list"],
+      examples: ["sok plugin.soksak-plugin-clipboard.clip.list"],
       handler: async (p) => {
         const items = await listItems({
           kind: p.kind === "clip" || p.kind === "memo" ? p.kind : undefined,
@@ -303,7 +303,7 @@ export default {
       triggers: { ko: "메모 추가 작성 기록" },
       params: { content: { type: "string", required: true }, category: { type: "string" } },
       returns: "{ itemId }",
-      examples: ['sok plugin.soksak-plugin-clip.memo.add \'{"content":"기억할 것","category":"기본"}\''],
+      examples: ['sok plugin.soksak-plugin-clipboard.memo.add \'{"content":"기억할 것","category":"기본"}\''],
       handler: async (p) => {
         const content = typeof p.content === "string" ? p.content.trim() : "";
         if (!content) return err("INVALID_PARAMS", "content 필요");
@@ -742,7 +742,7 @@ export default {
           addCatBtn.addEventListener("click", async () => {
             const name = window.prompt(t("newcat.prompt"));
             if (!name || !name.trim()) return;
-            await app.commands.execute("plugin.soksak-plugin-clip.category.add", { name: name.trim() });
+            await app.commands.execute("plugin.soksak-plugin-clipboard.category.add", { name: name.trim() });
             void refresh();
           });
 
