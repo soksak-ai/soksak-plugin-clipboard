@@ -1,4 +1,4 @@
-# soksak-plugin-clip
+# soksak-plugin-clipboard
 
 Clip — a soksak plugin that manages clipboard history and permanent memos grouped by category. Displayed as a right sidebar tab.
 Two item types live inside: **clipboard** (auto-captured) and **memo** (user-written, permanent).
@@ -30,9 +30,9 @@ All items belong to a category (default **"Default"**). `category.add/rename/del
 - `category.*` — add · rename · delete · list
 
 ```
-sok plugin.soksak-plugin-clip.clip.capture '{"text":"test"}'
-sok plugin.soksak-plugin-clip.memo.add '{"content":"remember this","category":"Default"}'
-sok plugin.soksak-plugin-clip.clip.purge          # clean up expired clips
+sok plugin.soksak-plugin-clipboard.clip.capture '{"text":"test"}'
+sok plugin.soksak-plugin-clipboard.memo.add '{"content":"remember this","category":"Default"}'
+sok plugin.soksak-plugin-clipboard.clip.purge          # clean up expired clips
 ```
 
 ## Data

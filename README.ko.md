@@ -1,4 +1,4 @@
-# soksak-plugin-clip
+# soksak-plugin-clipboard
 
 클립(Clip) — 클립보드 복사 이력과 영구 메모를 카테고리로 묶어 관리하는 soksak 플러그인. 우측 사이드바 탭.
 내부에 두 종류가 있다: **클립보드**(자동 캡처)와 **메모**(사용자 작성, 영구).
@@ -31,9 +31,9 @@
 - `category.*` — add · rename · delete · list
 
 ```
-sok plugin.soksak-plugin-clip.clip.capture '{"text":"테스트"}'
-sok plugin.soksak-plugin-clip.memo.add '{"content":"기억할 것","category":"기본"}'
-sok plugin.soksak-plugin-clip.clip.purge          # 보존 지난 클립 정리
+sok plugin.soksak-plugin-clipboard.clip.capture '{"text":"테스트"}'
+sok plugin.soksak-plugin-clipboard.memo.add '{"content":"기억할 것","category":"기본"}'
+sok plugin.soksak-plugin-clipboard.clip.purge          # 보존 지난 클립 정리
 ```
 
 ## 데이터

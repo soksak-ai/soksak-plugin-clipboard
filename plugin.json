@@ -1,12 +1,12 @@
 {
   "spec": "soksak-spec-plugin@0.0.1",
-  "id": "soksak-plugin-clip",
+  "id": "soksak-plugin-clipboard",
   "name": {
     "ko": "클립",
     "en": "Clip"
   },
   "version": "0.0.1",
-  "repo": "https://github.com/soksak-ai/soksak-plugin-clip.git",
+  "repo": "https://github.com/soksak-ai/soksak-plugin-clipboard.git",
   "description": {
     "ko": "클립보드 복사 이력과 영구 메모를 카테고리로 묶어 관리한다. 클립은 즐겨찾기·메모가 아니면 설정한 보존일(기본 3일) 후 자동 삭제, 메모는 영구. 같은 내용은 합쳐 복사 횟수를 센다. 우측 사이드바 탭.",
     "en": "Manages clipboard history and permanent memos grouped by category. Clips are auto-deleted after the configured retention period (default 3 days) unless starred or saved as memos; memos are permanent. Duplicate entries are merged and copy counts are tracked. Right sidebar tab."
