@@ -18,6 +18,34 @@ export default {
     const app = ctx.app;
     const sub = (d) => ctx.subscriptions.push(d);
     const mounts = new Set();
+
+    // ── i18n ─────────────────────────────────────────────────────────────────
+    const I18N = {
+      "search.placeholder":   { en: "Search…",                  ko: "검색…" },
+      "addcat.title":         { en: "Add category",             ko: "카테고리 추가" },
+      "chip.clipboard":       { en: "Clipboard",                ko: "클립보드" },
+      "chip.memo":            { en: "Memo",                     ko: "메모" },
+      "memo.placeholder":     { en: "Add memo… (Enter)",        ko: "메모 추가… (Enter)" },
+      "memo.add.title":       { en: "Add memo",                 ko: "메모 추가" },
+      "cat.all":              { en: "All categories",           ko: "전체 카테고리" },
+      "empty.search":         { en: "No results",               ko: "검색 결과가 없습니다" },
+      "empty.trash":          { en: "Trash is empty",           ko: "휴지통이 비었습니다" },
+      "empty.memo":           { en: "No memos",                 ko: "메모가 없습니다" },
+      "empty.default":        { en: "Copy something or add a memo", ko: "복사하거나 메모를 추가하세요" },
+      "empty.hint":           { en: "Copies land here automatically; add memos below", ko: "복사하면 자동으로 모이고, 아래에 메모를 적을 수 있습니다" },
+      "kind.memo":            { en: "Memo",                     ko: "메모" },
+      "kind.clip":            { en: "Clipboard",                ko: "클립보드" },
+      "fav.title":            { en: "Favorite",                 ko: "즐겨찾기" },
+      "restore.title":        { en: "Restore",                  ko: "복원" },
+      "delete.title":         { en: "Delete",                   ko: "삭제" },
+      "newcat.prompt":        { en: "New category name",        ko: "새 카테고리 이름" },
+      "cat.default":          { en: "General",                  ko: "기본" },
+      "time.justNow":         { en: "just now",                 ko: "방금" },
+      "time.min":             { en: "m ago",                    ko: "분 전" },
+      "time.hour":            { en: "h ago",                    ko: "시간 전" },
+      "time.day":             { en: "d ago",                    ko: "일 전" },
+    };
+    const t = (k) => { const s = I18N[k]; const l = app.locale ? app.locale() : "ko"; return s ? (s[l] ?? s.en ?? s.ko) : k; };
     const err = (code, message) => ({ ok: false, code, message });
     const reg = (name, spec) => sub(app.commands.register(name, spec));
 
@@ -448,13 +476,13 @@ export default {
           const searchInput = document.createElement("input");
           searchInput.className = "skc-search";
           searchInput.type = "text";
-          searchInput.placeholder = "검색…";
+          searchInput.placeholder = t("search.placeholder");
           searchInput.dataset.node = "search-input";
           const addCatBtn = document.createElement("button");
           addCatBtn.className = "skc-iconbtn";
           addCatBtn.type = "button";
           addCatBtn.textContent = "＋";
-          addCatBtn.title = "카테고리 추가";
+          addCatBtn.title = t("addcat.title");
           row1.append(searchInput, addCatBtn);
 
           const row2 = document.createElement("div");
@@ -474,8 +502,8 @@ export default {
             b.dataset.node = node;
             return b;
           };
-          const clipChip = mk("클립보드", "kind-clip");
-          const memoChip = mk("메모", "kind-memo");
+          const clipChip = mk(t("chip.clipboard"), "kind-clip");
+          const memoChip = mk(t("chip.memo"), "kind-memo");
           const favChip = mk("★", "fav-filter");
           const trashChip = mk("🗑", "trash-filter");
           chips.append(clipChip, memoChip, favChip, trashChip);
@@ -485,13 +513,13 @@ export default {
           const memoIn = document.createElement("input");
           memoIn.className = "skc-memoin";
           memoIn.type = "text";
-          memoIn.placeholder = "메모 추가… (Enter)";
+          memoIn.placeholder = t("memo.placeholder");
           memoIn.dataset.node = "memo-input";
           const memoAdd = document.createElement("button");
           memoAdd.className = "skc-iconbtn";
           memoAdd.type = "button";
           memoAdd.textContent = "✚";
-          memoAdd.title = "메모 추가";
+          memoAdd.title = t("memo.add.title");
           memoAdd.dataset.node = "memo-add";
           memoBox.append(memoIn, memoAdd);
 
@@ -509,14 +537,14 @@ export default {
           let category = "";
           let searchTimer = null;
 
-          // 상대 시간(짧게 — 좁은 사이드바). 방금/N분 전/N시간 전/N일 전, 그 이상은 M/D.
+          // 상대 시간(짧게 — 좁은 사이드바). just now/Nm ago/Nh ago/Nd ago, 그 이상은 M/D.
           const fmtTime = (ts) => {
             if (typeof ts !== "number") return "";
             const d = Date.now() - ts;
-            if (d < 60000) return "방금";
-            if (d < 3600000) return `${Math.floor(d / 60000)}분 전`;
-            if (d < 86400000) return `${Math.floor(d / 3600000)}시간 전`;
-            if (d < 604800000) return `${Math.floor(d / 86400000)}일 전`;
+            if (d < 60000) return t("time.justNow");
+            if (d < 3600000) return `${Math.floor(d / 60000)}${t("time.min")}`;
+            if (d < 86400000) return `${Math.floor(d / 3600000)}${t("time.hour")}`;
+            if (d < 604800000) return `${Math.floor(d / 86400000)}${t("time.day")}`;
             try {
               const x = new Date(ts);
               return `${x.getMonth() + 1}/${x.getDate()}`;
@@ -524,8 +552,8 @@ export default {
               return "";
             }
           };
-          const preview = (t) => {
-            const line = String(t).split("\n").find((l) => l.trim()) || String(t);
+          const preview = (text) => {
+            const line = String(text).split("\n").find((l) => l.trim()) || String(text);
             return line.trim();
           };
 
@@ -534,12 +562,12 @@ export default {
             catSel.textContent = "";
             const optAll = document.createElement("option");
             optAll.value = "";
-            optAll.textContent = "전체 카테고리";
+            optAll.textContent = t("cat.all");
             catSel.append(optAll);
             for (const name of cats) {
               const o = document.createElement("option");
               o.value = name;
-              o.textContent = name;
+              o.textContent = name === DEFAULT_CAT ? t("cat.default") : name;
               catSel.append(o);
             }
             catSel.value = category;
@@ -553,19 +581,19 @@ export default {
               const icon = document.createElement("span");
               icon.innerHTML =
                 "<svg width='38' height='38' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'><rect x='8' y='3' width='13' height='15' rx='2'/><path d='M3 7v13a2 2 0 0 0 2 2h11'/></svg>";
-              const t = document.createElement("div");
-              t.className = "skc-empty-t";
+              const tEl = document.createElement("div");
+              tEl.className = "skc-empty-t";
               const h = document.createElement("div");
               h.className = "skc-empty-h";
-              t.textContent = searchTerm
-                ? "검색 결과가 없습니다"
+              tEl.textContent = searchTerm
+                ? t("empty.search")
                 : trashView
-                  ? "휴지통이 비었습니다"
+                  ? t("empty.trash")
                   : kindFilter === "memo"
-                    ? "메모가 없습니다"
-                    : "복사하거나 메모를 추가하세요";
-              h.textContent = trashView ? "" : "복사하면 자동으로 모이고, 아래에 메모를 적을 수 있습니다";
-              empty.append(icon, t, h);
+                    ? t("empty.memo")
+                    : t("empty.default");
+              h.textContent = trashView ? "" : t("empty.hint");
+              empty.append(icon, tEl, h);
               listEl.append(empty);
               return;
             }
@@ -583,10 +611,10 @@ export default {
               meta.className = "skc-meta";
               const kind = document.createElement("span");
               kind.className = "skc-kind " + (c.kind === "memo" ? "memo" : "clip");
-              kind.textContent = c.kind === "memo" ? "메모" : "클립보드";
+              kind.textContent = c.kind === "memo" ? t("kind.memo") : t("kind.clip");
               const cat = document.createElement("span");
               cat.className = "skc-cat";
-              cat.textContent = c.category || DEFAULT_CAT;
+              cat.textContent = c.category === DEFAULT_CAT || !c.category ? t("cat.default") : c.category;
               const time = document.createElement("span");
               time.className = "skc-time";
               const n = c.copyCount || 0;
@@ -598,7 +626,7 @@ export default {
               fav.className = "skc-btn fav" + (c.favorite ? " on" : "");
               fav.type = "button";
               fav.textContent = c.favorite ? "★" : "☆";
-              fav.title = "즐겨찾기";
+              fav.title = t("fav.title");
               fav.dataset.node = "item-fav/" + key;
               fav.addEventListener("click", () => {
                 void app.data.put(COLL, { ...c, favorite: !c.favorite }, { id: c.id });
@@ -610,13 +638,13 @@ export default {
               del.dataset.node = "item-del/" + key;
               if (trashView) {
                 del.textContent = "↩";
-                del.title = "복원";
+                del.title = t("restore.title");
                 del.addEventListener("click", () => {
                   void app.data.put(COLL, { ...c, deleted: false, deletedAt: null }, { id: c.id });
                 });
               } else {
                 del.textContent = "✕";
-                del.title = "삭제";
+                del.title = t("delete.title");
                 del.addEventListener("click", () => {
                   void app.data.put(COLL, { ...c, deleted: true, deletedAt: Date.now() }, { id: c.id });
                 });
@@ -712,7 +740,7 @@ export default {
           });
 
           addCatBtn.addEventListener("click", async () => {
-            const name = window.prompt("새 카테고리 이름");
+            const name = window.prompt(t("newcat.prompt"));
             if (!name || !name.trim()) return;
             await app.commands.execute("plugin.soksak-plugin-clip.category.add", { name: name.trim() });
             void refresh();
@@ -738,6 +766,7 @@ export default {
     };
     sub(app.data.watch(COLL, undefined, onChange));
     sub(app.data.watch(CATS, undefined, onChange));
+    sub(app.events.on("locale.changed", () => { for (const m of mounts) { try { m && m.refresh && m.refresh(); } catch {} } }));
 
     void Promise.all([
       app.data.define(COLL, {
