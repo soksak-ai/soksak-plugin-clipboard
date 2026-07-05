@@ -130,6 +130,7 @@ export default {
       triggers: { ko: "클립보드 캡처 텍스트 저장" },
       params: { text: { type: "string", required: true } },
       returns: "{ itemId, deduped }",
+      message: (d) => (d.deduped ? "이미 있는 클립의 복사 횟수를 늘렸습니다." : "클립을 캡처했습니다."),
       examples: ['sok plugin.soksak-plugin-clipboard.clip.capture \'{"text":"테스트"}\''],
       handler: async (p) => {
         if (typeof p.text !== "string") return err("INVALID_PARAMS", "text 필요");
@@ -151,6 +152,7 @@ export default {
         offset: { type: "number" },
       },
       returns: "{ items }",
+      message: (d) => `${(d.items ?? []).length}개를 불러왔습니다.`,
       examples: ["sok plugin.soksak-plugin-clipboard.clip.list"],
       handler: async (p) => {
         const items = await listItems({
@@ -170,6 +172,7 @@ export default {
       triggers: { ko: "클립보드 검색 복사내용 찾기 전문검색" },
       params: { query: { type: "string", required: true }, kind: { type: "string" }, limit: { type: "number" } },
       returns: "{ items }",
+      message: (d) => `${(d.items ?? []).length}개를 찾았습니다.`,
       handler: async (p) => {
         if (typeof p.query !== "string") return err("INVALID_PARAMS", "query 필요");
         const hits = await app.data.search(COLL, p.query, { limit: typeof p.limit === "number" ? p.limit : 100 });
@@ -184,6 +187,7 @@ export default {
       triggers: { ko: "즐겨찾기 토글 보존 고정" },
       params: { id: { type: "string", required: true } },
       returns: "{ itemId, favorite }",
+      message: (d) => (d.favorite ? "즐겨찾기에 추가했습니다." : "즐겨찾기를 해제했습니다."),
       handler: async (p) => {
         if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
         const rec = await app.data.get(COLL, p.id);
@@ -199,6 +203,7 @@ export default {
       triggers: { ko: "카테고리 이동 분류 변경" },
       params: { id: { type: "string", required: true }, category: { type: "string", required: true } },
       returns: "{ itemId, category }",
+      message: (d) => `"${d.category}" 카테고리로 옮겼습니다.`,
       handler: async (p) => {
         if (typeof p.id !== "string" || typeof p.category !== "string")
           return err("INVALID_PARAMS", "id·category 필요");
@@ -215,6 +220,7 @@ export default {
       triggers: { ko: "삭제 휴지통 항목 제거" },
       params: { id: { type: "string", required: true } },
       returns: "{ itemId }",
+      message: () => "휴지통으로 보냈습니다.",
       handler: async (p) => {
         if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
         const rec = await app.data.get(COLL, p.id);
@@ -229,6 +235,7 @@ export default {
       triggers: { ko: "복원 휴지통 되돌리기" },
       params: { id: { type: "string", required: true } },
       returns: "{ itemId }",
+      message: () => "복원했습니다.",
       handler: async (p) => {
         if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
         const rec = await app.data.get(COLL, p.id);
@@ -243,6 +250,7 @@ export default {
       triggers: { ko: "전체 삭제 영구 지우기 비우기" },
       params: { trashOnly: { type: "boolean" }, kind: { type: "string" } },
       returns: "{ deleted }",
+      message: (d) => `${d.deleted ?? 0}개를 영구 삭제했습니다.`,
       handler: async (p) => {
         const all = await app.data.query(COLL, { limit: 100000 });
         const kind = p.kind === "clip" || p.kind === "memo" ? p.kind : undefined;
@@ -258,6 +266,7 @@ export default {
       triggers: { ko: "개수 몇 개 카운트" },
       params: { trash: { type: "boolean" }, kind: { type: "string" } },
       returns: "{ count }",
+      message: (d) => `${d.count ?? 0}개`,
       handler: async (p) => {
         const where = { deleted: p.trash === true };
         if (p.kind === "clip" || p.kind === "memo") where.kind = p.kind;
@@ -271,6 +280,7 @@ export default {
       triggers: { ko: "상태 요약 현황 통계" },
       params: {},
       returns: "{ clips, memos, favorites, trash, retentionDays }",
+      message: (d) => `클립 ${d.clips ?? 0}개, 메모 ${d.memos ?? 0}개, 즐겨찾기 ${d.favorites ?? 0}개, 휴지통 ${d.trash ?? 0}개.`,
       handler: async () => {
         const clips = await app.data.count(COLL, { where: { deleted: false, kind: "clip" } });
         const memos = await app.data.count(COLL, { where: { deleted: false, kind: "memo" } });
@@ -285,6 +295,7 @@ export default {
       triggers: { ko: "정리 만료 클립 제거 보존기간" },
       params: { olderThanMs: { type: "number", description: "이 ms 보다 오래된 클립(생략 시 설정 보존일)" } },
       returns: "{ purged }",
+      message: (d) => `${d.purged ?? 0}개를 정리했습니다.`,
       handler: async (p) => {
         if (typeof p.olderThanMs === "number") {
           const cutoff = Date.now() - p.olderThanMs;
@@ -303,6 +314,7 @@ export default {
       triggers: { ko: "메모 추가 작성 기록" },
       params: { content: { type: "string", required: true }, category: { type: "string" } },
       returns: "{ itemId }",
+      message: () => "메모를 추가했습니다.",
       examples: ['sok plugin.soksak-plugin-clipboard.memo.add \'{"content":"기억할 것","category":"기본"}\''],
       handler: async (p) => {
         const content = typeof p.content === "string" ? p.content.trim() : "";
@@ -328,6 +340,7 @@ export default {
       triggers: { ko: "메모 수정 편집 내용 변경" },
       params: { id: { type: "string", required: true }, content: { type: "string", required: true } },
       returns: "{ itemId }",
+      message: () => "메모를 수정했습니다.",
       handler: async (p) => {
         if (typeof p.id !== "string" || typeof p.content !== "string")
           return err("INVALID_PARAMS", "id·content 필요");
@@ -343,6 +356,7 @@ export default {
       triggers: { ko: "메모 삭제 휴지통" },
       params: { id: { type: "string", required: true } },
       returns: "{ itemId }",
+      message: () => "메모를 휴지통으로 보냈습니다.",
       handler: async (p) => {
         if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
         const rec = await app.data.get(COLL, p.id);
@@ -358,6 +372,7 @@ export default {
       triggers: { ko: "카테고리 목록 분류 조회" },
       params: {},
       returns: "{ categories }",
+      message: (d) => `${(d.categories ?? []).length}개`,
       handler: async () => ({ ok: true, categories: await listCats() }),
     });
 
@@ -366,6 +381,7 @@ export default {
       triggers: { ko: "카테고리 추가 새 분류 생성" },
       params: { name: { type: "string", required: true } },
       returns: "{ name }",
+      message: (d) => `"${d.name}" 카테고리를 추가했습니다.`,
       handler: async (p) => {
         const name = typeof p.name === "string" ? p.name.trim() : "";
         if (!name) return err("INVALID_PARAMS", "name 필요");
@@ -382,6 +398,7 @@ export default {
       triggers: { ko: "카테고리 이름변경 분류 수정 이름바꾸기" },
       params: { from: { type: "string", required: true }, to: { type: "string", required: true } },
       returns: "{ moved }",
+      message: (d) => `이름을 바꾸고 ${d.moved ?? 0}개 항목을 옮겼습니다.`,
       handler: async (p) => {
         const from = typeof p.from === "string" ? p.from.trim() : "";
         const to = typeof p.to === "string" ? p.to.trim() : "";
@@ -402,6 +419,7 @@ export default {
       triggers: { ko: "카테고리 삭제 분류 제거" },
       params: { name: { type: "string", required: true } },
       returns: "{ moved }",
+      message: (d) => `카테고리를 삭제하고 ${d.moved ?? 0}개 항목을 옮겼습니다.`,
       handler: async (p) => {
         const name = typeof p.name === "string" ? p.name.trim() : "";
         if (!name) return err("INVALID_PARAMS", "name 필요");
