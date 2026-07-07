@@ -51,77 +51,77 @@
     ],
     "commands": [
       {
-        "name": "clip.capture",
+        "name": "capture",
         "title": {
           "ko": "클립 캡처",
           "en": "Capture Clip"
         }
       },
       {
-        "name": "clip.list",
+        "name": "list",
         "title": {
           "ko": "클립/메모 목록",
           "en": "List Clips/Memos"
         }
       },
       {
-        "name": "clip.search",
+        "name": "search",
         "title": {
           "ko": "검색",
           "en": "Search"
         }
       },
       {
-        "name": "clip.favorite",
+        "name": "favorite",
         "title": {
           "ko": "즐겨찾기 토글",
           "en": "Toggle Favorite"
         }
       },
       {
-        "name": "clip.category",
+        "name": "category",
         "title": {
           "ko": "항목 카테고리 이동",
           "en": "Move to Category"
         }
       },
       {
-        "name": "clip.delete",
+        "name": "delete",
         "title": {
           "ko": "삭제(휴지통)",
           "en": "Delete (Trash)"
         }
       },
       {
-        "name": "clip.restore",
+        "name": "restore",
         "title": {
           "ko": "복원",
           "en": "Restore"
         }
       },
       {
-        "name": "clip.clear",
+        "name": "clear",
         "title": {
           "ko": "비우기",
           "en": "Clear"
         }
       },
       {
-        "name": "clip.count",
+        "name": "count",
         "title": {
           "ko": "개수",
           "en": "Count"
         }
       },
       {
-        "name": "clip.state",
+        "name": "state",
         "title": {
           "ko": "상태 요약",
           "en": "State Summary"
         }
       },
       {
-        "name": "clip.purge",
+        "name": "purge",
         "title": {
           "ko": "보존 지난 클립 정리",
           "en": "Purge Expired Clips"

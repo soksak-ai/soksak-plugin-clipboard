@@ -70,7 +70,7 @@ export default {
       return rows.length > 0;
     }
 
-    // ── 단일 캡처 유틸(R8) — watch 자동 캡처와 clip.capture 가 공유. clip 종류·기본 카테고리.
+    // ── 단일 캡처 유틸(R8) — watch 자동 캡처와 capture 가 공유. clip 종류·기본 카테고리.
     async function captureText(raw) {
       const content = typeof raw === "string" ? raw.trim() : "";
       if (!content) return null;
@@ -124,19 +124,19 @@ export default {
     // ── 자동 캡처 ──
     sub(app.clipboard.watch((e) => void captureText(e.text)));
 
-    // ── 명령: clip.* (클립보드) ──────────────────────────────────────────────
-    reg("clip.capture", {
+    // ── 명령: 클립보드 항목(capture·list·search·favorite·category·delete·restore·clear·count·state·purge) ──
+    reg("capture", {
       description: "Capture text as a clipboard item. Identical content increments copyCount instead of creating a duplicate; placed in the default category.",
       triggers: { ko: "클립보드 캡처 텍스트 저장" },
       params: { text: { type: "string", required: true } },
       returns: "{ itemId, deduped }",
       message: (d) => (d.deduped ? "이미 있는 클립의 복사 횟수를 늘렸습니다." : "클립을 캡처했습니다."),
-      examples: ['sok plugin.soksak-plugin-clipboard.clip.capture \'{"text":"테스트"}\''],
+      examples: ['sok plugin.soksak-plugin-clipboard.capture \'{"text":"테스트"}\''],
       hint: (d) =>
         d.ok && d.itemId
           ? [
-              { cmd: "plugin.soksak-plugin-clipboard.clip.favorite", why: "즐겨찾기로 고정하면 보존기간 없이 남길 수 있습니다" },
-              { cmd: "plugin.soksak-plugin-clipboard.clip.category", why: "카테고리를 지정해 정리할 수 있습니다" },
+              { cmd: "plugin.soksak-plugin-clipboard.favorite", why: "즐겨찾기로 고정하면 보존기간 없이 남길 수 있습니다" },
+              { cmd: "plugin.soksak-plugin-clipboard.category", why: "카테고리를 지정해 정리할 수 있습니다" },
             ]
           : [],
       handler: async (p) => {
@@ -147,7 +147,7 @@ export default {
       },
     });
 
-    reg("clip.list", {
+    reg("list", {
       description: "List items in newest-first order. Filter by kind (clip|memo), category, favorite, or trash.",
       triggers: { ko: "클립보드 목록 항목 조회" },
       params: {
@@ -160,7 +160,7 @@ export default {
       },
       returns: "{ items }",
       message: (d) => `${(d.items ?? []).length}개를 불러왔습니다.`,
-      examples: ["sok plugin.soksak-plugin-clipboard.clip.list"],
+      examples: ["sok plugin.soksak-plugin-clipboard.list"],
       handler: async (p) => {
         const items = await listItems({
           kind: p.kind === "clip" || p.kind === "memo" ? p.kind : undefined,
@@ -174,7 +174,7 @@ export default {
       },
     });
 
-    reg("clip.search", {
+    reg("search", {
       description: "Full-text CJK search across item content, excluding trash. Optionally narrow by kind (clip|memo).",
       triggers: { ko: "클립보드 검색 복사내용 찾기 전문검색" },
       params: { query: { type: "string", required: true }, kind: { type: "string" }, limit: { type: "number" } },
@@ -189,7 +189,7 @@ export default {
       },
     });
 
-    reg("clip.favorite", {
+    reg("favorite", {
       description: "Toggle favorite on an item. Favorited clipboard clips are exempt from retention-based deletion.",
       triggers: { ko: "즐겨찾기 토글 보존 고정" },
       params: { id: { type: "string", required: true } },
@@ -205,7 +205,7 @@ export default {
       },
     });
 
-    reg("clip.category", {
+    reg("category", {
       description: "Move an item to a different category. Rejects the request if the target category does not exist.",
       triggers: { ko: "카테고리 이동 분류 변경" },
       params: { id: { type: "string", required: true }, category: { type: "string", required: true } },
@@ -222,15 +222,15 @@ export default {
       },
     });
 
-    reg("clip.delete", {
-      description: "Soft-delete an item to the trash. Restorable via clip.restore.",
+    reg("delete", {
+      description: "Soft-delete an item to the trash. Restorable via restore.",
       triggers: { ko: "삭제 휴지통 항목 제거" },
       params: { id: { type: "string", required: true } },
       returns: "{ itemId }",
       message: () => "휴지통으로 보냈습니다.",
       hint: (d) =>
         d.ok
-          ? [{ cmd: "plugin.soksak-plugin-clipboard.clip.restore", why: "실수로 지웠다면 복원할 수 있습니다" }]
+          ? [{ cmd: "plugin.soksak-plugin-clipboard.restore", why: "실수로 지웠다면 복원할 수 있습니다" }]
           : [],
       handler: async (p) => {
         if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
@@ -241,7 +241,7 @@ export default {
       },
     });
 
-    reg("clip.restore", {
+    reg("restore", {
       description: "Restore a trashed item back to its original category.",
       triggers: { ko: "복원 휴지통 되돌리기" },
       params: { id: { type: "string", required: true } },
@@ -256,7 +256,7 @@ export default {
       },
     });
 
-    reg("clip.clear", {
+    reg("clear", {
       description: "Hard-delete items permanently. trashOnly=true limits deletion to the trash; kind restricts to clip or memo.",
       triggers: { ko: "전체 삭제 영구 지우기 비우기" },
       params: { trashOnly: { type: "boolean" }, kind: { type: "string" } },
@@ -272,7 +272,7 @@ export default {
       },
     });
 
-    reg("clip.count", {
+    reg("count", {
       description: "Count items. trash=true counts the trash; kind restricts to clip or memo.",
       triggers: { ko: "개수 몇 개 카운트" },
       params: { trash: { type: "boolean" }, kind: { type: "string" } },
@@ -286,7 +286,7 @@ export default {
       },
     });
 
-    reg("clip.state", {
+    reg("state", {
       description: "Summary of counts — clipboard items, memos, favorites, trash, and the configured retention period in days.",
       triggers: { ko: "상태 요약 현황 통계" },
       params: {},
@@ -301,7 +301,7 @@ export default {
       },
     });
 
-    reg("clip.purge", {
+    reg("purge", {
       description: "Immediately delete clipboard items that exceed the retention period, skipping favorites and memos. olderThanMs overrides the retention setting (useful for testing).",
       triggers: { ko: "정리 만료 클립 제거 보존기간" },
       params: { olderThanMs: { type: "number", description: "이 ms 보다 오래된 클립(생략 시 설정 보존일)" } },
@@ -363,14 +363,14 @@ export default {
     });
 
     reg("memo.delete", {
-      description: "Soft-delete a memo to the trash. Same as clip.delete but restricted to memo-kind items.",
+      description: "Soft-delete a memo to the trash. Same as delete but restricted to memo-kind items.",
       triggers: { ko: "메모 삭제 휴지통" },
       params: { id: { type: "string", required: true } },
       returns: "{ itemId }",
       message: () => "메모를 휴지통으로 보냈습니다.",
       hint: (d) =>
         d.ok
-          ? [{ cmd: "plugin.soksak-plugin-clipboard.clip.restore", why: "실수로 지웠다면 복원할 수 있습니다" }]
+          ? [{ cmd: "plugin.soksak-plugin-clipboard.restore", why: "실수로 지웠다면 복원할 수 있습니다" }]
           : [],
       handler: async (p) => {
         if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
@@ -399,7 +399,7 @@ export default {
       message: (d) => `"${d.name}" 카테고리를 추가했습니다.`,
       hint: (d) =>
         d.ok
-          ? [{ cmd: "plugin.soksak-plugin-clipboard.clip.category", why: "이 카테고리로 항목을 옮길 수 있습니다" }]
+          ? [{ cmd: "plugin.soksak-plugin-clipboard.category", why: "이 카테고리로 항목을 옮길 수 있습니다" }]
           : [],
       handler: async (p) => {
         const name = typeof p.name === "string" ? p.name.trim() : "";

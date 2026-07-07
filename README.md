@@ -25,14 +25,14 @@ All items belong to a category (default **"Default"**). `category.add/rename/del
 
 ## Commands (All Features Exposed — CLI/MCP/View-Agnostic)
 
-- `clip.*` — capture · list · search · favorite · category (move) · delete · restore · clear · count · state · **purge** (retention cleanup)
+- Clipboard items (bare names) — `capture` · `list` · `search` · `favorite` · `category` (move) · `delete` · `restore` · `clear` · `count` · `state` · **`purge`** (retention cleanup)
 - `memo.*` — add · update · delete
 - `category.*` — add · rename · delete · list
 
 ```
-sok plugin.soksak-plugin-clipboard.clip.capture '{"text":"test"}'
+sok plugin.soksak-plugin-clipboard.capture '{"text":"test"}'
 sok plugin.soksak-plugin-clipboard.memo.add '{"content":"remember this","category":"Default"}'
-sok plugin.soksak-plugin-clipboard.clip.purge          # clean up expired clips
+sok plugin.soksak-plugin-clipboard.purge          # clean up expired clips
 ```
 
 ## Data
@@ -46,9 +46,29 @@ Uses only core `app.data` (SQLite, plugin-exclusive namespace) — no raw SQL. C
 SOKSAK_SOCKET=~/.soksak/com.soksak.dev.sock node e2e/clip.mjs
 ```
 
-Drives the app via socket JSON-RPC and asserts idempotent scenarios (capture · dedup · search · memo permanence · category move/rename/delete · retention purge [favorites and memos exempt] · trash). Auto-capture is verified via `clip.capture` (same utility as the watch callback) because the core suppresses self-write echoes in headless mode.
+Drives the app via socket JSON-RPC and asserts idempotent scenarios (capture · dedup · search · memo permanence · category move/rename/delete · retention purge [favorites and memos exempt] · trash). Auto-capture is verified via `capture` (same utility as the watch callback) because the core suppresses self-write echoes in headless mode. Set `SOKSAK_WINDOW=<project window label>` to route calls to a specific project window in a multi-window app.
 
 ## Future Work (Out of Scope for This Release)
 
 - Per-item selective encryption (user-opt-in) — first-line defense via retention (permanence = favorite); encryption is follow-up.
 - Sensitive clip markers (macOS concealed/transient) skip — requires core watcher enhancements (follow-up).
+
+## Changelog
+
+### 0.3.0 — BREAKING: drop the `clip.` command prefix (R4 anti-stutter law)
+
+The command name `plugin.<id>.<command>` already states the domain once. A `clip.` namespace on `soksak-plugin-clipboard` restated a truncation of the plugin id (`clip` ⊂ `clipboard`), which the R4 law forbids. All eleven clipboard-item commands are renamed to bare verbs. `memo.*` and `category.*` are unchanged — those namespaces name the object operated on, not the plugin. Callers using the old names MUST update; the old names no longer resolve.
+
+| Old | New |
+|---|---|
+| `clip.capture` | `capture` |
+| `clip.list` | `list` |
+| `clip.search` | `search` |
+| `clip.favorite` | `favorite` |
+| `clip.category` | `category` |
+| `clip.delete` | `delete` |
+| `clip.restore` | `restore` |
+| `clip.clear` | `clear` |
+| `clip.count` | `count` |
+| `clip.state` | `state` |
+| `clip.purge` | `purge` |

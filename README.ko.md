@@ -26,14 +26,14 @@
 
 ## 커맨드 (전 기능 노출 — CLI/MCP/뷰 무관)
 
-- `clip.*` — capture · list · search · favorite · category(이동) · delete · restore · clear · count · state · **purge**(보존 정리)
+- 클립보드 항목(bare 이름) — `capture` · `list` · `search` · `favorite` · `category`(이동) · `delete` · `restore` · `clear` · `count` · `state` · **`purge`**(보존 정리)
 - `memo.*` — add · update · delete
 - `category.*` — add · rename · delete · list
 
 ```
-sok plugin.soksak-plugin-clipboard.clip.capture '{"text":"테스트"}'
+sok plugin.soksak-plugin-clipboard.capture '{"text":"테스트"}'
 sok plugin.soksak-plugin-clipboard.memo.add '{"content":"기억할 것","category":"기본"}'
-sok plugin.soksak-plugin-clipboard.clip.purge          # 보존 지난 클립 정리
+sok plugin.soksak-plugin-clipboard.purge          # 보존 지난 클립 정리
 ```
 
 ## 데이터
@@ -51,9 +51,31 @@ SOKSAK_SOCKET=~/.soksak/com.soksak.dev.sock node e2e/clip.mjs
 
 소켓 JSON-RPC 로 앱을 구동해 멱등 시나리오(캡처·dedup·검색·메모 영구·카테고리 이동/이름변경/삭제·보존
 purge[즐겨찾기·메모 예외]·휴지통)를 단언한다. 자동 캡처는 코어가 self-write echo 를 억제하므로 헤드리스에선
-`clip.capture`(watch 콜백과 같은 단일 유틸)로 검증한다.
+`capture`(watch 콜백과 같은 단일 유틸)로 검증한다. 멀티윈도우에선 `SOKSAK_WINDOW=<프로젝트 창 label>` 로 대상 창을 지정한다.
 
 ## 후속 (이번 범위 제외)
 
 - 항목별 선택 암호화(필요한 경우 사용자가 직접) — 보존(영구화는 즐겨찾기)으로 1차 방어, 암호화는 후속.
 - 민감 클립 마커(macOS concealed/transient) skip — 코어 워처 보강 필요(후속).
+
+## 변경 이력
+
+### 0.3.0 — BREAKING: `clip.` 명령 접두사 제거 (R4 반-stutter 법)
+
+`plugin.<id>.<command>` 이름이 이미 도메인을 한 번 말한다. `soksak-plugin-clipboard` 의 `clip.` 네임스페이스는
+플러그인 id 의 축약(`clip` ⊂ `clipboard`)을 재진술한 것으로 R4 법이 금지한다. 클립보드 항목 명령 11개를 모두 bare 동사로 개명한다.
+`memo.*` 와 `category.*` 는 조작 대상 객체를 이름하므로 그대로 둔다. 옛 이름을 쓰던 호출자는 반드시 갱신해야 한다 — 옛 이름은 더 이상 해석되지 않는다.
+
+| 옛 이름 | 새 이름 |
+|---|---|
+| `clip.capture` | `capture` |
+| `clip.list` | `list` |
+| `clip.search` | `search` |
+| `clip.favorite` | `favorite` |
+| `clip.category` | `category` |
+| `clip.delete` | `delete` |
+| `clip.restore` | `restore` |
+| `clip.clear` | `clear` |
+| `clip.count` | `count` |
+| `clip.state` | `state` |
+| `clip.purge` | `purge` |
