@@ -132,6 +132,13 @@ export default {
       returns: "{ itemId, deduped }",
       message: (d) => (d.deduped ? "이미 있는 클립의 복사 횟수를 늘렸습니다." : "클립을 캡처했습니다."),
       examples: ['sok plugin.soksak-plugin-clipboard.clip.capture \'{"text":"테스트"}\''],
+      hint: (d) =>
+        d.ok && d.itemId
+          ? [
+              { cmd: "plugin.soksak-plugin-clipboard.clip.favorite", why: "즐겨찾기로 고정하면 보존기간 없이 남길 수 있습니다" },
+              { cmd: "plugin.soksak-plugin-clipboard.clip.category", why: "카테고리를 지정해 정리할 수 있습니다" },
+            ]
+          : [],
       handler: async (p) => {
         if (typeof p.text !== "string") return err("INVALID_PARAMS", "text 필요");
         const r = await captureText(p.text);
@@ -221,6 +228,10 @@ export default {
       params: { id: { type: "string", required: true } },
       returns: "{ itemId }",
       message: () => "휴지통으로 보냈습니다.",
+      hint: (d) =>
+        d.ok
+          ? [{ cmd: "plugin.soksak-plugin-clipboard.clip.restore", why: "실수로 지웠다면 복원할 수 있습니다" }]
+          : [],
       handler: async (p) => {
         if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
         const rec = await app.data.get(COLL, p.id);
@@ -357,6 +368,10 @@ export default {
       params: { id: { type: "string", required: true } },
       returns: "{ itemId }",
       message: () => "메모를 휴지통으로 보냈습니다.",
+      hint: (d) =>
+        d.ok
+          ? [{ cmd: "plugin.soksak-plugin-clipboard.clip.restore", why: "실수로 지웠다면 복원할 수 있습니다" }]
+          : [],
       handler: async (p) => {
         if (typeof p.id !== "string") return err("INVALID_PARAMS", "id 필요");
         const rec = await app.data.get(COLL, p.id);
@@ -382,6 +397,10 @@ export default {
       params: { name: { type: "string", required: true } },
       returns: "{ name }",
       message: (d) => `"${d.name}" 카테고리를 추가했습니다.`,
+      hint: (d) =>
+        d.ok
+          ? [{ cmd: "plugin.soksak-plugin-clipboard.clip.category", why: "이 카테고리로 항목을 옮길 수 있습니다" }]
+          : [],
       handler: async (p) => {
         const name = typeof p.name === "string" ? p.name.trim() : "";
         if (!name) return err("INVALID_PARAMS", "name 필요");
