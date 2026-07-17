@@ -1,0 +1,11 @@
+{
+  "name": "soksak-plugin-clipboard",
+  "private": true,
+  "version": "0.0.1",
+  "soksakRelease": {
+    "kind": "plugin",
+    "id": "soksak-plugin-clipboard",
+    "repository": "https://github.com/soksak-ai/soksak-plugin-clipboard",
+    "manifest": "release.json"
+  }
+}
