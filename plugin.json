@@ -2,12 +2,12 @@
   "spec": "soksak-spec-plugin@0.0.1",
   "id": "soksak-plugin-clipboard",
   "name": {
-    "ko": "\ud074\ub9bd",
+    "ko": "클립",
     "en": "Clip"
   },
   "version": "0.0.1",
   "description": {
-    "ko": "\ud074\ub9bd\ubcf4\ub4dc \ubcf5\uc0ac \uc774\ub825\uacfc \uc601\uad6c \uba54\ubaa8\ub97c \uce74\ud14c\uace0\ub9ac\ub85c \ubb36\uc5b4 \uad00\ub9ac\ud55c\ub2e4. \ud074\ub9bd\uc740 \uc990\uaca8\ucc3e\uae30\u00b7\uba54\ubaa8\uac00 \uc544\ub2c8\uba74 \uc124\uc815\ud55c \ubcf4\uc874\uc77c(\uae30\ubcf8 3\uc77c) \ud6c4 \uc790\ub3d9 \uc0ad\uc81c, \uba54\ubaa8\ub294 \uc601\uad6c. \uac19\uc740 \ub0b4\uc6a9\uc740 \ud569\uccd0 \ubcf5\uc0ac \ud69f\uc218\ub97c \uc13c\ub2e4. \uc6b0\uce21 \uc0ac\uc774\ub4dc\ubc14 \ud0ed.",
+    "ko": "클립보드 복사 이력과 영구 메모를 카테고리로 묶어 관리한다. 클립은 즐겨찾기·메모가 아니면 설정한 보존일(기본 3일) 후 자동 삭제, 메모는 영구. 같은 내용은 합쳐 복사 횟수를 센다. 우측 사이드바 탭.",
     "en": "Manages clipboard history and permanent memos grouped by category. Clips are auto-deleted after the configured retention period (default 3 days) unless starred or saved as memos; memos are permanent. Duplicate entries are merged and copy counts are tracked. Right sidebar tab."
   },
   "entry": "main.js",
@@ -25,12 +25,12 @@
       "min": 1,
       "max": 30,
       "title": {
-        "ko": "\ubcf4\uc874 \uc77c\uc218",
+        "ko": "보존 일수",
         "en": "Retention days"
       },
       "description": {
-        "ko": "\uc990\uaca8\ucc3e\uae30\u00b7\uba54\ubaa8\uac00 \uc544\ub2cc \ud074\ub9bd\uc744 \uba70\uce60\uac04 \ubcf4\uad00\ud560\uc9c0(1~30, \uae30\ubcf8 3). \uc9c0\ub09c \ud074\ub9bd\uc740 \uc790\ub3d9 \uc0ad\uc81c.",
-        "en": "How many days to keep non-favorite, non-memo clips (1\u201330, default 3). Older clips are auto-deleted."
+        "ko": "즐겨찾기·메모가 아닌 클립을 며칠간 보관할지(1~30, 기본 3). 지난 클립은 자동 삭제.",
+        "en": "How many days to keep non-favorite, non-memo clips (1–30, default 3). Older clips are auto-deleted."
       }
     }
   ],
@@ -39,139 +39,140 @@
       {
         "id": "clips",
         "title": {
-          "ko": "\ud074\ub9bd",
+          "ko": "클립",
           "en": "Clip"
         },
-        "icon": "\ud83d\udccb",
+        "icon": "📋",
         "placements": [
           "rail"
-        ]
+        ],
+        "resident": true
       }
     ],
     "commands": [
       {
         "name": "capture",
         "title": {
-          "ko": "\ud074\ub9bd \ucea1\ucc98",
+          "ko": "클립 캡처",
           "en": "Capture Clip"
         }
       },
       {
         "name": "list",
         "title": {
-          "ko": "\ud074\ub9bd/\uba54\ubaa8 \ubaa9\ub85d",
+          "ko": "클립/메모 목록",
           "en": "List Clips/Memos"
         }
       },
       {
         "name": "search",
         "title": {
-          "ko": "\uac80\uc0c9",
+          "ko": "검색",
           "en": "Search"
         }
       },
       {
         "name": "favorite",
         "title": {
-          "ko": "\uc990\uaca8\ucc3e\uae30 \ud1a0\uae00",
+          "ko": "즐겨찾기 토글",
           "en": "Toggle Favorite"
         }
       },
       {
         "name": "category",
         "title": {
-          "ko": "\ud56d\ubaa9 \uce74\ud14c\uace0\ub9ac \uc774\ub3d9",
+          "ko": "항목 카테고리 이동",
           "en": "Move to Category"
         }
       },
       {
         "name": "delete",
         "title": {
-          "ko": "\uc0ad\uc81c(\ud734\uc9c0\ud1b5)",
+          "ko": "삭제(휴지통)",
           "en": "Delete (Trash)"
         }
       },
       {
         "name": "restore",
         "title": {
-          "ko": "\ubcf5\uc6d0",
+          "ko": "복원",
           "en": "Restore"
         }
       },
       {
         "name": "clear",
         "title": {
-          "ko": "\ube44\uc6b0\uae30",
+          "ko": "비우기",
           "en": "Clear"
         }
       },
       {
         "name": "count",
         "title": {
-          "ko": "\uac1c\uc218",
+          "ko": "개수",
           "en": "Count"
         }
       },
       {
         "name": "state",
         "title": {
-          "ko": "\uc0c1\ud0dc \uc694\uc57d",
+          "ko": "상태 요약",
           "en": "State Summary"
         }
       },
       {
         "name": "purge",
         "title": {
-          "ko": "\ubcf4\uc874 \uc9c0\ub09c \ud074\ub9bd \uc815\ub9ac",
+          "ko": "보존 지난 클립 정리",
           "en": "Purge Expired Clips"
         }
       },
       {
         "name": "memo.add",
         "title": {
-          "ko": "\uba54\ubaa8 \ucd94\uac00",
+          "ko": "메모 추가",
           "en": "Add Memo"
         }
       },
       {
         "name": "memo.update",
         "title": {
-          "ko": "\uba54\ubaa8 \uc218\uc815",
+          "ko": "메모 수정",
           "en": "Update Memo"
         }
       },
       {
         "name": "memo.delete",
         "title": {
-          "ko": "\uba54\ubaa8 \uc0ad\uc81c(\ud734\uc9c0\ud1b5)",
+          "ko": "메모 삭제(휴지통)",
           "en": "Delete Memo (Trash)"
         }
       },
       {
         "name": "category.add",
         "title": {
-          "ko": "\uce74\ud14c\uace0\ub9ac \ucd94\uac00",
+          "ko": "카테고리 추가",
           "en": "Add Category"
         }
       },
       {
         "name": "category.rename",
         "title": {
-          "ko": "\uce74\ud14c\uace0\ub9ac \uc774\ub984\ubcc0\uacbd",
+          "ko": "카테고리 이름변경",
           "en": "Rename Category"
         }
       },
       {
         "name": "category.delete",
         "title": {
-          "ko": "\uce74\ud14c\uace0\ub9ac \uc0ad\uc81c",
+          "ko": "카테고리 삭제",
           "en": "Delete Category"
         }
       },
       {
         "name": "category.list",
         "title": {
-          "ko": "\uce74\ud14c\uace0\ub9ac \ubaa9\ub85d",
+          "ko": "카테고리 목록",
           "en": "List Categories"
         }
       }
@@ -179,47 +180,47 @@
     "nodes": [
       {
         "id": "search-input",
-        "description": "\uac80\uc0c9 \uc785\ub825 \ud544\ub4dc"
+        "description": "검색 입력 필드"
       },
       {
         "id": "category-select",
-        "description": "\uce74\ud14c\uace0\ub9ac \ud544\ud130 \uc120\ud0dd"
+        "description": "카테고리 필터 선택"
       },
       {
         "id": "kind-clip",
-        "description": "\ud074\ub9bd \uc885\ub958 \ud544\ud130 \ud1a0\uae00"
+        "description": "클립 종류 필터 토글"
       },
       {
         "id": "kind-memo",
-        "description": "\uba54\ubaa8 \uc885\ub958 \ud544\ud130 \ud1a0\uae00"
+        "description": "메모 종류 필터 토글"
       },
       {
         "id": "fav-filter",
-        "description": "\uc990\uaca8\ucc3e\uae30\ub9cc \ubcf4\uae30 \ud1a0\uae00"
+        "description": "즐겨찾기만 보기 토글"
       },
       {
         "id": "trash-filter",
-        "description": "\ud734\uc9c0\ud1b5 \ubcf4\uae30 \ud1a0\uae00"
+        "description": "휴지통 보기 토글"
       },
       {
         "id": "memo-add",
-        "description": "\uba54\ubaa8 \ucd94\uac00 \ubc84\ud2bc"
+        "description": "메모 추가 버튼"
       },
       {
         "id": "memo-input",
-        "description": "\uba54\ubaa8 \uc791\uc131 \uc785\ub825"
+        "description": "메모 작성 입력"
       },
       {
         "id": "item",
-        "description": "\ud074\ub9bd/\uba54\ubaa8 \ud589"
+        "description": "클립/메모 행"
       },
       {
         "id": "item-fav",
-        "description": "\ubcc4(\uc990\uaca8\ucc3e\uae30) \ud1a0\uae00 \ubc84\ud2bc"
+        "description": "별(즐겨찾기) 토글 버튼"
       },
       {
         "id": "item-del",
-        "description": "\uc0ad\uc81c \ubc84\ud2bc"
+        "description": "삭제 버튼"
       }
     ]
   }
